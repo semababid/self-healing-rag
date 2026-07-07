@@ -66,7 +66,7 @@ python -m src.main "What is the maximum flight time of the Nimbus N7?"
 ## Project layout
 
 ```
-sa/
+self-healing-rag/
 ├── data/sample_docs/     # source documents (fictional, so hallucination is testable)
 ├── src/
 │   ├── config.py         # all settings & env overrides
