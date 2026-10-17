@@ -1,57 +1,28 @@
-"""Central configuration for the Self-Healing RAG pipeline.
-
-All tunable knobs live here so the rest of the code never hard-codes a path,
-model name, or magic number. Values can be overridden with environment
-variables (loaded from a local `.env` file if present).
-"""
-
-from __future__ import annotations
+"""Settings. Each one can be overridden with an environment variable or .env."""
 
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load variables from a local .env file into os.environ (no-op if absent).
 load_dotenv()
 
-# --- Paths -----------------------------------------------------------------
-# Project root = the directory that contains the `src/` package.
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data" / "sample_docs"
 CHROMA_DIR = ROOT_DIR / "chroma_db"
 CHROMA_COLLECTION = "self_healing_rag"
 
-# --- Models ----------------------------------------------------------------
-# Claude model used for BOTH answer generation and the critic/grader.
-# Override via CLAUDE_MODEL, e.g. "claude-opus-5-5" (current Opus),
-# or "claude-sonnet-5-5" / "claude-haiku-5-5" to save cost.
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-4-8")
+# Local model served by Ollama. It answers, grades and rewrites queries.
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.5:9b")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+# Thinking mode makes each call several times slower, so it's off by default.
+LLM_THINKING = os.getenv("LLM_THINKING", "0") == "1"
 
-# Local embedding model — runs on your machine via sentence-transformers,
-# so it costs nothing and needs no API key.
-EMBEDDING_MODEL = os.getenv(
-    "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
-)
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
-# --- Chunking --------------------------------------------------------------
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
-
-# --- Retrieval / self-healing behaviour ------------------------------------
-# How many chunks to pull from the vector store per query.
 RETRIEVER_K = int(os.getenv("RETRIEVER_K", "4"))
 
-# How many times the critic may reject an answer and trigger a re-try
-# (query rewrite + re-retrieve) before we give up and say "I don't know".
+# How often a rejected answer leads to a new query before we give up.
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))
-
-
-def require_anthropic_key() -> None:
-    """Fail fast with a friendly message if the API key is missing."""
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set.\n"
-            "Create a .env file (copy .env.example) and add your key, or run:\n"
-            "  export ANTHROPIC_API_KEY=sk-ant-..."
-        )

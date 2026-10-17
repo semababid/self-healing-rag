@@ -1,7 +1,7 @@
-# Nimbus N7 — Firmware Release Notes ("Cirrus")
+# Nimbus N7: Firmware Release Notes ("Cirrus")
 
 Firmware for the N7 is released under the codename "Cirrus" on the first Tuesday
-of every month. Updates are installed from the Halo portal → Devices → Firmware.
+of every month. Updates are installed from the Halo portal > Devices > Firmware.
 A drone must be docked and above 40% charge before an update can start.
 
 ## Cirrus 5.3 (September 2024)

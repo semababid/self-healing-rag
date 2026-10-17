@@ -1,4 +1,4 @@
-# Nimbus Robotics — Employee Handbook (Excerpt)
+# Nimbus Robotics: Employee Handbook (Excerpt)
 
 ## Company facts
 - Nimbus Robotics was founded in 2019 in Cottbus, Germany.

@@ -1,35 +1,44 @@
-"""Claude chat-model factory.
+"""The chat model: a local model served by Ollama."""
 
-A single place that constructs the LLM so every node uses identical settings.
-
-Note on ``temperature``: current Claude models (Opus 5.5 / Opus 4.8 / Sonnet 5.5
-/ etc.) reject an explicit ``temperature`` and would return HTTP 400, so we
-simply don't set one. ``langchain-anthropic`` omits the field when it's ``None``.
-
-Note on ``max_tokens``: on newer models (Opus 5.5, Sonnet 5.5, Haiku 5.5)
-thinking is on by default and its tokens count toward ``max_tokens``. A tight
-cap can cut off an answer, or the critic's JSON verdict, partway through. So we
-use a generous ceiling. It is a limit, not a cost: short answers stay short.
-"""
-
-from __future__ import annotations
-
-from langchain_anthropic import ChatAnthropic
+import httpx
+import ollama
+from langchain_ollama import ChatOllama
 
 from src import config
 
-_llm: ChatAnthropic | None = None
+# What a failed model call can raise: server down, or model missing.
+LLM_ERRORS = (ConnectionError, httpx.HTTPError, ollama.ResponseError)
+
+_llm = None
 
 
-def get_llm() -> ChatAnthropic:
-    """Return a cached ChatAnthropic instance configured from ``config``."""
+def get_llm() -> ChatOllama:
     global _llm
     if _llm is None:
-        config.require_anthropic_key()
-        _llm = ChatAnthropic(
-            model=config.CLAUDE_MODEL,
-            max_tokens=16000,
-            timeout=60,
-            # temperature intentionally omitted — see module docstring.
+        _llm = ChatOllama(
+            model=config.LLM_MODEL,
+            base_url=config.OLLAMA_BASE_URL,
+            temperature=0,  # repeatable answers, so eval runs can be compared
+            reasoning=config.LLM_THINKING,
         )
     return _llm
+
+
+def check_ollama() -> None:
+    """Raise RuntimeError if Ollama isn't running or the model isn't downloaded."""
+    try:
+        models = ollama.Client(host=config.OLLAMA_BASE_URL).list().models
+    except ConnectionError:
+        raise RuntimeError(
+            f"Can't reach Ollama at {config.OLLAMA_BASE_URL}. Start it with:\n"
+            "    ollama serve"
+        ) from None
+
+    name = config.LLM_MODEL
+    if ":" not in name:
+        name += ":latest"
+    if name not in {m.model for m in models}:
+        raise RuntimeError(
+            f"The model {config.LLM_MODEL} isn't downloaded. Get it with:\n"
+            f"    ollama pull {config.LLM_MODEL}"
+        )

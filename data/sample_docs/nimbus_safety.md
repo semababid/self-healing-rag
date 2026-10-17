@@ -1,4 +1,4 @@
-# Nimbus N7 — Site Safety & Operating Rules
+# Nimbus N7: Site Safety & Operating Rules
 
 These rules apply to every site that operates Nimbus N7 drones. Site managers
 must confirm them during installation and review them once a year.

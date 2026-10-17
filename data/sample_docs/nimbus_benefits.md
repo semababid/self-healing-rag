@@ -1,4 +1,4 @@
-# Nimbus Robotics — Employee Benefits & Ways of Working
+# Nimbus Robotics: Employee Benefits & Ways of Working
 
 This page complements the vacation policy in the Employee Handbook. All HR
 requests go through the Halo portal unless stated otherwise.
@@ -7,7 +7,7 @@ requests go through the Halo portal unless stated otherwise.
 - The standard full-time week is 38 hours.
 - Employees may work remotely up to 3 days per week. Field engineers and
   warehouse-lab staff agree remote days with their team lead.
-- Core collaboration hours are 10:00–15:00 local time in every office.
+- Core collaboration hours are 10:00-15:00 local time in every office.
 
 ## Parental leave
 - Nimbus tops up statutory parental pay to 100% of salary for the first

@@ -1,128 +1,102 @@
-# 🔁 Self-Healing RAG Pipeline
+# Self-healing RAG
 
-A Retrieval-Augmented Generation (RAG) system that **critiques its own answers and retries**
-instead of blindly retrieving-and-generating. Built as a **stateful, cyclical workflow** with
-[LangGraph](https://langchain-ai.github.io/langgraph/) — not a simple linear chain.
+A question-answering system over a small set of documents that checks its own
+answers before returning them. After drafting an answer, a second model call
+(the critic) checks whether every fact in it comes from the retrieved text. If
+it doesn't, the system rewrites the search query and tries again. After two
+failed retries it says it doesn't know instead of guessing.
 
-## The idea
-
-When a user asks a question, the pipeline:
-
-1. **Retrieves** relevant document chunks from a vector store.
-2. **Generates** an answer with an LLM, grounded only in those chunks.
-3. **Critiques** the answer: *is it actually supported by the retrieved chunks, or did the
-   model hallucinate?*
-4. If the critic **rejects** the answer → it **reformulates the query and re-retrieves**, up to
-   a retry limit. If it still can't find support, it **gracefully says "I don't have enough
-   information"** instead of making things up.
+The workflow is a LangGraph graph with a loop:
 
 ```
-          ┌─────────────┐
-  query → │  retrieve   │ ◄────────────────────┐
-          └──────┬──────┘                      │
-                 ▼                              │ (rewritten query)
-          ┌─────────────┐                      │
-          │  generate   │                      │
-          └──────┬──────┘              ┌────────────────┐
-                 ▼                     │ transform_query│
-          ┌─────────────┐   reject    └────────────────┘
-          │   critic    │──── & retries left ───┘
-          └──────┬──────┘
-        accept   │   reject & out of retries
-                 ▼          ▼
-              ┌───────────────┐
-              │      END      │  (answer, or "I don't know")
-              └───────────────┘
+question -> retrieve -> generate -> critic --grounded--> answer
+               ^                      |
+               |                  rejected
+               |                      v
+               +-- rewrite query <-- retries left? --no--> "I don't know"
 ```
 
-## Tech stack
+Everything runs on your own machine: the language model through Ollama, the
+embeddings with sentence-transformers, and the vector store with Chroma. No API
+key or account is needed.
 
-| Concern            | Choice                                                        |
-| ------------------ | ------------------------------------------------------------- |
-| Orchestration      | LangGraph (`StateGraph` with a conditional loop)              |
-| LLM (gen + critic) | Anthropic Claude via `langchain-anthropic`                    |
-| Embeddings         | `sentence-transformers/all-MiniLM-L6-v2` (local, free)        |
-| Vector store       | Chroma (persistent, on disk)                                  |
+## Setup
 
-## Quick start
+You need Python 3.10 or newer and [Ollama](https://ollama.com).
 
 ```bash
-# 1. Create and activate a virtual environment
-python3 -m venv .venv && source .venv/bin/activate
-
-# 2. Install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
-# 3. Add your Anthropic API key
-cp .env.example .env        # then edit .env and paste your key
+ollama pull qwen3.5:9b   # about 6.6 GB
+ollama serve             # skip if Ollama is already running
 
-# 4. Build the vector store from the sample docs
-python -m src.ingest
+python -m src.ingest     # builds the vector store
+```
 
-# 5. Ask a question (the answer lists the source files it came from)
+`ingest` downloads the embedding model (about 90 MB) the first time.
+
+## Usage
+
+```bash
 python -m src.main "What is the maximum flight time of the Nimbus N7?"
-
-# 6. (Optional) Score the self-healing behaviour on a curated question set
-python -m src.evaluate            # full trace + report
-python -m src.evaluate --quiet    # just the summary table
-
-# 7. (Optional) Print the workflow diagram. No API key needed.
-python -m src.graph
+python -m src.main               # ask questions until you type quit
+python -m src.evaluate --quiet   # score it on the test questions
+python -m src.graph              # print the graph
 ```
 
-`main` and `evaluate` check for the API key and the vector store before doing
-anything else. If either is missing, they stop with a one-line explanation
-instead of spending API calls on a run that can only end in "I don't know".
+Each run prints the steps it takes (`[retrieve]`, `[generate]`, `[critic]`,
+`[rewrite #1]`, ...), so you can watch the retry loop work.
 
-## Choosing a model
+Settings are read from environment variables or a `.env` file; see
+`.env.example`. Any Ollama model can be used by setting `LLM_MODEL`. Smaller
+models are faster but make a weaker critic.
 
-The generator and the critic share one model, set by `CLAUDE_MODEL` in `.env`.
-The default is `claude-opus-4-8`. Current options are `claude-opus-5-5`, or
-`claude-sonnet-5-5` and `claude-haiku-5-5` to save cost. The critic uses native
-structured output (`method="json_schema"`), which every current model accepts.
-The older tool-forcing approach fails on the 5.5 models.
+## Documents
 
-## Does the self-healing actually work?
+`data/sample_docs` holds six short documents about Nimbus Robotics, a company
+that doesn't exist: a handbook, a support guide, release notes, safety rules,
+benefits and an IT policy. Because the company is made up, the model can't know
+the answers from its training data, so any answer that isn't in the documents
+is a hallucination. Put your own `.md`, `.txt` or `.pdf` files in the folder and
+run `python -m src.ingest` again to use them instead.
 
-`src/evaluate.py` tests the project's main claim: the pipeline answers what the
-documents support and refuses when they don't. The sample documents describe a
-made-up company, so a confident answer to a question they don't cover can only
-be a hallucination.
+## Evaluation
 
-The script runs a fixed set of questions through the real graph and scores each
-one. Answerable questions, such as *"How long is the N7 warranty?"*, must get a
-grounded answer that the critic accepts and that contains the expected fact
-("24"). Unanswerable questions, such as *"What is the N7's maximum altitude?"*,
-must end in the honest fallback.
+`src/evaluate.py` runs 11 fixed questions. Six are answered in the documents,
+and the answer must contain the expected fact (for example "38" for the
+N7's flight time). Five sound plausible but aren't covered (the N7's colours,
+its maximum altitude, the CFO's name, ...), and those must end in the "I don't
+have enough information" reply.
 
-The report counts grounded answers and honest refusals separately. It also
-flags any case that passed only after a query rewrite and retry, which is the
-self-healing path at work. For each failure it prints the answer and the reason
-it failed. The script exits non-zero if anything fails, so it doubles as a
-smoke test.
-
-The corpus is six documents split into 16 chunks, and the retriever fetches 4
-per query. Retrieval therefore has to choose, which is what gives a rewritten
-query something to improve.
-
-## Project layout
+With `qwen3.5:9b` (thinking off) on an Apple M5 with 16 GB, all 11 pass, in
+about 80 seconds in total:
 
 ```
-self-healing-rag/
-├── data/sample_docs/     # 6 fictional company docs (so hallucination is testable)
-├── src/
-│   ├── config.py         # all settings & env overrides
-│   ├── ingest.py         # load → chunk → embed → persist to Chroma   (Phase 2)
-│   ├── vectorstore.py    # open the store / build a retriever          (Phase 2)
-│   ├── llm.py            # Claude chat-model factory                   (Phase 3)
-│   ├── state.py          # the graph's shared state                    (Phase 3)
-│   ├── nodes.py          # retrieve / generate / critic / rewrite      (Phase 3)
-│   ├── graph.py          # wire the cyclical LangGraph                 (Phase 4)
-│   ├── main.py           # CLI entrypoint                              (Phase 5)
-│   └── evaluate.py       # scored eval of the self-healing behaviour   (Phase 6)
-├── ROADMAP.md            # planned phases 7 to 11, split into sub-phases
-└── requirements.txt
+11/11 passed
+  answerable, answered correctly:  6/6
+  unanswerable, refused:           5/5
+  answered only after a retry:     0
 ```
 
-The project was built one phase at a time, and the git history has a commit for
-each phase. [ROADMAP.md](ROADMAP.md) lists what comes next.
+So far no answerable question has needed a retry, because retrieval finds the
+right chunk on the first try. The retry loop has only been exercised on the
+unanswerable questions, where it tries two rewritten queries before giving up.
+Harder questions are planned (see the roadmap, 9.1).
+
+## Files
+
+```
+src/config.py       settings
+src/ingest.py       load documents, split into chunks, store in Chroma
+src/vectorstore.py  Chroma and embedding model access
+src/llm.py          the Ollama chat model
+src/state.py        the data passed between steps
+src/nodes.py        the steps: retrieve, generate, critic, rewrite, give up
+src/graph.py        connects the steps into the graph
+src/main.py         command-line interface
+src/evaluate.py     the test questions and scoring
+```
+
+[ROADMAP.md](ROADMAP.md) lists what's done and what's planned.

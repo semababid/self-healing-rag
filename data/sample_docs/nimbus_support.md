@@ -1,4 +1,4 @@
-# Nimbus N7 — Support & Troubleshooting Guide
+# Nimbus N7: Support & Troubleshooting Guide
 
 ## Warranty
 - Every Nimbus N7 ships with a 24-month limited warranty.
@@ -7,7 +7,7 @@
 
 ## Common issues
 - **Drone will not arm:** Confirm the battery is above 15% and the geofence file `zone.cfg` is present on the SD card.
-- **Scanner misreads RFID tags:** Recalibrate via the Halo portal → Devices → Calibrate. Recalibration takes about 90 seconds.
+- **Scanner misreads RFID tags:** Recalibrate via the Halo portal > Devices > Calibrate. Recalibration takes about 90 seconds.
 - **Short flight time:** Batteries are rated for 500 charge cycles. After that, capacity drops below the 38-minute spec and the pack should be replaced.
 
 ## Support channels

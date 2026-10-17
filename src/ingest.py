@@ -1,14 +1,11 @@
-"""Build the vector store from the documents in ``data/sample_docs``.
+"""Builds the vector store from the files in data/sample_docs.
 
-Run this once (and again whenever the documents change):
+Run it once, and again whenever the documents change:
 
     python -m src.ingest
 
-Pipeline: load files -> split into overlapping chunks -> embed -> persist.
-The embeddings are computed locally, so this works fully offline.
+The first run downloads the embedding model; after that it works offline.
 """
-
-from __future__ import annotations
 
 from pathlib import Path
 
@@ -19,85 +16,49 @@ from pypdf import PdfReader
 from src import config
 from src.vectorstore import get_vectorstore
 
-# Which file extensions we know how to read.
-_TEXT_SUFFIXES = {".md", ".txt"}
-_PDF_SUFFIXES = {".pdf"}
 
-
-def _load_text(path: Path) -> list[Document]:
-    """Read a Markdown/text file as one Document."""
-    text = path.read_text(encoding="utf-8")
-    return [Document(page_content=text, metadata={"source": str(path)})]
-
-
-def _load_pdf(path: Path) -> list[Document]:
-    """Read a PDF as one Document per page, skipping pages with no text."""
-    docs = []
-    for page_number, page in enumerate(PdfReader(path).pages):
-        text = page.extract_text() or ""
-        if text.strip():
-            docs.append(
-                Document(
-                    page_content=text,
-                    metadata={"source": str(path), "page": page_number},
-                )
-            )
-    return docs
+def load_file(path: Path) -> list[Document]:
+    suffix = path.suffix.lower()
+    if suffix in (".md", ".txt"):
+        return [Document(page_content=path.read_text(encoding="utf-8"),
+                         metadata={"source": str(path)})]
+    if suffix == ".pdf":
+        pages = PdfReader(path).pages
+        return [Document(page_content=text, metadata={"source": str(path), "page": n})
+                for n, page in enumerate(pages)
+                if (text := page.extract_text() or "").strip()]
+    print(f"  skipping {path.name} (unsupported file type)")
+    return []
 
 
 def load_documents() -> list[Document]:
-    """Load every supported file under ``DATA_DIR`` into LangChain Documents."""
-    if not config.DATA_DIR.exists():
-        raise FileNotFoundError(f"No document directory at {config.DATA_DIR}")
-
-    docs: list[Document] = []
+    docs = []
     for path in sorted(config.DATA_DIR.rglob("*")):
-        if not path.is_file():
-            continue
-        suffix = path.suffix.lower()
-        if suffix in _TEXT_SUFFIXES:
-            docs.extend(_load_text(path))
-        elif suffix in _PDF_SUFFIXES:
-            docs.extend(_load_pdf(path))
-        else:
-            print(f"  · skipping unsupported file: {path.name}")
-
+        if path.is_file() and not path.name.startswith("."):  # skips .DS_Store
+            docs.extend(load_file(path))
     if not docs:
-        raise RuntimeError(
-            f"No supported documents (.md/.txt/.pdf) found in {config.DATA_DIR}"
-        )
+        raise RuntimeError(f"No .md, .txt or .pdf files found in {config.DATA_DIR}")
     return docs
 
 
-def split_documents(docs: list[Document]) -> list[Document]:
-    """Split documents into overlapping chunks for finer-grained retrieval."""
+def ingest() -> None:
+    docs = load_documents()
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=config.CHUNK_SIZE,
         chunk_overlap=config.CHUNK_OVERLAP,
         add_start_index=True,
     )
-    return splitter.split_documents(docs)
+    chunks = splitter.split_documents(docs)
+    print(f"{len(docs)} documents, {len(chunks)} chunks")
 
-
-def ingest() -> None:
-    """Load, chunk, embed, and persist all sample documents into Chroma."""
-    print(f"Loading documents from {config.DATA_DIR} ...")
-    documents = load_documents()
-    print(f"  loaded {len(documents)} document(s)")
-
-    chunks = split_documents(documents)
-    print(f"  split into {len(chunks)} chunk(s)")
-
-    # Rebuild from scratch so re-running ingest never duplicates chunks.
+    # Start from an empty collection so running this twice doesn't duplicate chunks.
     store = get_vectorstore()
-    existing_ids = store.get(include=[]).get("ids", [])  # ids only, skip text
-    if existing_ids:
-        print(f"  clearing {len(existing_ids)} existing chunk(s)")
-        store.delete(ids=existing_ids)
+    old_ids = store.get(include=[])["ids"]
+    if old_ids:
+        store.delete(ids=old_ids)
 
-    print(f"Embedding with {config.EMBEDDING_MODEL} (first run downloads the model) ...")
     store.add_documents(chunks)
-    print(f"Done. Vector store persisted at {config.CHROMA_DIR}")
+    print(f"Saved to {config.CHROMA_DIR}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Nimbus Robotics — IT & Security Policy
+# Nimbus Robotics: IT & Security Policy
 
 ## Accounts and sign-in
 - Every employee signs in to company systems, including the Halo portal, with
