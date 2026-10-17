@@ -2,13 +2,14 @@ import json
 
 import pytest
 from langchain_core.documents import Document
+from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableLambda
 from pydantic import Field, ValidationError
 
-from src import config, nodes
+from src import config, nodes, vectorstore
 
 
 class FakeLLM(BaseChatModel):
@@ -50,12 +51,14 @@ class FakeLLM(BaseChatModel):
         return RunnableLambda(grade)
 
 
-class FakeRetriever:
+class FakeSearch:
+    """Stands in for vectorstore.search. Always returns the same chunks."""
+
     def __init__(self, documents):
         self.documents = documents
         self.queries = []
 
-    def invoke(self, query):
+    def __call__(self, query, k=None):
         self.queries.append(query)
         return self.documents
 
@@ -69,14 +72,32 @@ def llm(monkeypatch):
 
 @pytest.fixture
 def retriever(monkeypatch):
-    fake = FakeRetriever([
+    fake = FakeSearch([
         Document(
             page_content="The N7 has a maximum flight time of 38 minutes on a single charge.",
             metadata={"source": "data/sample_docs/nimbus_handbook.md"},
         )
     ])
-    monkeypatch.setattr(nodes, "get_retriever", lambda: fake)
+    monkeypatch.setattr(nodes, "search", fake)
     return fake
+
+
+@pytest.fixture
+def docs_dir(tmp_path, monkeypatch):
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    (folder / "handbook.md").write_text("The N7 has a maximum flight time of 38 minutes.\n" * 40)
+    (folder / "parts.txt").write_text("Replacement parts are shipped from Tallinn.")
+    (folder / ".DS_Store").write_bytes(b"\x00\x01")
+    monkeypatch.setattr(config, "DATA_DIR", folder)
+    return folder
+
+
+@pytest.fixture
+def temp_store(tmp_path, monkeypatch, docs_dir):
+    # A store in a temp folder with fake embeddings: no model download, real chroma_db untouched.
+    monkeypatch.setattr(config, "CHROMA_DIR", tmp_path / "chroma")
+    monkeypatch.setattr(vectorstore, "get_embeddings", lambda: DeterministicFakeEmbedding(size=32))
 
 
 @pytest.fixture(autouse=True)

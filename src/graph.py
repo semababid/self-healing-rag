@@ -1,7 +1,8 @@
 """Wires the nodes into a graph with a retry loop.
 
 retrieve -> generate -> critic, then the critic's verdict decides: accept the
-answer, rewrite the query and go back to retrieve, or give up.
+answer, rewrite the query and go back to retrieve, or give up. With
+FILTER_CHUNKS=1 a filter step sits between retrieve and generate.
 """
 
 import time
@@ -13,6 +14,7 @@ from src.state import GraphState
 
 STEPS = {
     "retrieve": nodes.retrieve,
+    "filter_chunks": nodes.filter_chunks,
     "generate": nodes.generate,
     "critic": nodes.critic,
     "transform_query": nodes.transform_query,
@@ -33,10 +35,15 @@ def timed(name, step):
 def build_graph():
     graph = StateGraph(GraphState)
     for name, step in STEPS.items():
-        graph.add_node(name, timed(name, step))
+        if name != "filter_chunks" or config.FILTER_CHUNKS:
+            graph.add_node(name, timed(name, step))
 
     graph.add_edge(START, "retrieve")
-    graph.add_edge("retrieve", "generate")
+    if config.FILTER_CHUNKS:
+        graph.add_edge("retrieve", "filter_chunks")
+        graph.add_edge("filter_chunks", "generate")
+    else:
+        graph.add_edge("retrieve", "generate")
     graph.add_edge("generate", "critic")
     graph.add_conditional_edges(
         "critic",
@@ -52,9 +59,11 @@ app = build_graph()
 
 
 def answer_question(question: str) -> GraphState:
-    # One run is 3 steps, plus 4 per retry, plus give_up. A tight step limit
-    # stops a routing bug from looping (LangGraph's own limit is ~10,000).
-    limit = 3 + 4 * config.MAX_RETRIES + 1 + 5
+    # A first attempt is 3 or 4 steps, each retry adds a rewrite on top, and
+    # give_up is one more. A tight step limit stops a routing bug from looping
+    # (LangGraph's own limit is about 10,000).
+    attempt = 4 if config.FILTER_CHUNKS else 3
+    limit = attempt + (attempt + 1) * config.MAX_RETRIES + 1 + 5
     return app.invoke(
         {"question": question, "query": question, "retries": 0},
         {"recursion_limit": limit},

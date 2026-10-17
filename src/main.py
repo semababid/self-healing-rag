@@ -15,6 +15,7 @@ from pathlib import Path
 from src.graph import answer_question
 from src.llm import LLM_ERRORS, check_ollama
 from src.logs import save_run, setup_logging, step_totals
+from src.nodes import cited_documents
 from src.vectorstore import require_store_built
 
 
@@ -34,8 +35,14 @@ def ask(question: str, verbose: bool) -> bool:
     print(f"\n(grounded={state.get('grounded')}, retries={state.get('retries', 0)}, "
           f"{seconds:.1f}s)")
     if state.get("grounded"):
-        sources = sorted({Path(doc.metadata["source"]).name for doc in state["documents"]})
-        print("retrieved from:", ", ".join(sources))
+        documents = state["documents"]
+        cited = cited_documents(state["generation"], documents)
+        if cited:
+            for doc in cited:
+                print(f"[{documents.index(doc) + 1}] {Path(doc.metadata['source']).name}")
+        else:
+            sources = sorted({Path(doc.metadata["source"]).name for doc in documents})
+            print("retrieved from:", ", ".join(sources))
     if verbose:
         totals = step_totals(state.get("timings", []))
         print("time per step:", ", ".join(f"{step} {secs:.1f}s" for step, secs in totals.items()))

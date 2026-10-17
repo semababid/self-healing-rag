@@ -17,14 +17,24 @@ from src import config
 from src.vectorstore import get_vectorstore
 
 
+def title_of(text: str, path: Path) -> str:
+    """The first Markdown heading, or the file name if there is none."""
+    for line in text.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return path.stem
+
+
 def load_file(path: Path) -> list[Document]:
     suffix = path.suffix.lower()
     if suffix in (".md", ".txt"):
-        return [Document(page_content=path.read_text(encoding="utf-8"),
-                         metadata={"source": str(path)})]
+        text = path.read_text(encoding="utf-8")
+        return [Document(page_content=text,
+                         metadata={"source": str(path), "title": title_of(text, path)})]
     if suffix == ".pdf":
         pages = PdfReader(path).pages
-        return [Document(page_content=text, metadata={"source": str(path), "page": n})
+        return [Document(page_content=text,
+                         metadata={"source": str(path), "title": path.stem, "page": n})
                 for n, page in enumerate(pages)
                 if (text := page.extract_text() or "").strip()]
     print(f"  skipping {path.name} (unsupported file type)")
@@ -41,14 +51,26 @@ def load_documents() -> list[Document]:
     return docs
 
 
-def ingest() -> None:
-    docs = load_documents()
+def split_documents(docs: list[Document]) -> list[Document]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=config.CHUNK_SIZE,
         chunk_overlap=config.CHUNK_OVERLAP,
         add_start_index=True,
     )
     chunks = splitter.split_documents(docs)
+    for chunk in chunks:
+        # A chunk from the middle of a document doesn't say what the document is
+        # about, e.g. which product a list of specs belongs to. Without that, the
+        # model mixed up the N7 and N9. So every chunk starts with the title.
+        title = chunk.metadata["title"]
+        if title not in chunk.page_content.split("\n", 1)[0]:
+            chunk.page_content = f"{title}\n\n{chunk.page_content}"
+    return chunks
+
+
+def ingest() -> None:
+    docs = load_documents()
+    chunks = split_documents(docs)
     print(f"{len(docs)} documents, {len(chunks)} chunks")
     print("Embedding them (the first run downloads the embedding model, about 90 MB) ...")
 

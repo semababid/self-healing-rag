@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from langchain_core.embeddings import DeterministicFakeEmbedding
+from langchain_core.documents import Document
 
 from src import config, ingest, vectorstore
 
@@ -28,31 +28,13 @@ def make_pdf(path: Path, text: str) -> None:
     path.write_bytes(out)
 
 
-@pytest.fixture
-def docs_dir(tmp_path, monkeypatch):
-    folder = tmp_path / "docs"
-    folder.mkdir()
-    (folder / "handbook.md").write_text("The N7 has a maximum flight time of 38 minutes.\n" * 40)
-    (folder / "parts.txt").write_text("Replacement parts are shipped from Tallinn.")
-    (folder / ".DS_Store").write_bytes(b"\x00\x01")
-    monkeypatch.setattr(config, "DATA_DIR", folder)
-    return folder
-
-
-@pytest.fixture
-def temp_store(tmp_path, monkeypatch, docs_dir):
-    # A store in a temp folder with fake embeddings: no model download, real chroma_db untouched.
-    monkeypatch.setattr(config, "CHROMA_DIR", tmp_path / "chroma")
-    monkeypatch.setattr(vectorstore, "get_embeddings", lambda: DeterministicFakeEmbedding(size=32))
-
-
 def test_load_file_reads_markdown(tmp_path):
     path = tmp_path / "notes.md"
     path.write_text("# Notes\nSome text.")
     docs = ingest.load_file(path)
     assert len(docs) == 1
     assert docs[0].page_content == "# Notes\nSome text."
-    assert docs[0].metadata == {"source": str(path)}
+    assert docs[0].metadata == {"source": str(path), "title": "Notes"}
 
 
 def test_load_file_reads_a_pdf_page(tmp_path):
@@ -60,7 +42,25 @@ def test_load_file_reads_a_pdf_page(tmp_path):
     make_pdf(path, "Recalibration takes about 90 seconds")
     docs = ingest.load_file(path)
     assert [doc.page_content.strip() for doc in docs] == ["Recalibration takes about 90 seconds"]
-    assert docs[0].metadata == {"source": str(path), "page": 0}
+    assert docs[0].metadata == {"source": str(path), "title": "manual", "page": 0}
+
+
+def test_title_of_uses_the_first_heading_or_the_file_name():
+    assert ingest.title_of("intro\n# Nimbus N9: Preview\n## Specs", Path("n9.md")) == "Nimbus N9: Preview"
+    assert ingest.title_of("no heading here", Path("notes.txt")) == "notes"
+
+
+def test_every_chunk_starts_with_its_document_title(monkeypatch):
+    monkeypatch.setattr(config, "CHUNK_SIZE", 120)
+    monkeypatch.setattr(config, "CHUNK_OVERLAP", 0)
+    text = "# Nimbus N9: Preview\n\n" + "\n".join(f"- Spec line {n} of the N9." for n in range(12))
+    doc = Document(page_content=text, metadata={"source": "n9.md", "title": "Nimbus N9: Preview"})
+
+    chunks = ingest.split_documents([doc])
+
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert chunk.page_content.split("\n", 1)[0] in ("# Nimbus N9: Preview", "Nimbus N9: Preview")
 
 
 def test_load_file_skips_other_file_types(tmp_path):
@@ -95,7 +95,32 @@ def test_require_store_built(temp_store):
     vectorstore.require_store_built()
 
 
-def test_ingested_chunks_can_be_retrieved(temp_store):
+@pytest.mark.parametrize("mode", ["vector", "hybrid"])
+def test_ingested_chunks_can_be_searched(temp_store, monkeypatch, mode):
+    monkeypatch.setattr(config, "SEARCH", mode)
     ingest.ingest()
-    docs = vectorstore.get_retriever(k=2).invoke("Where are replacement parts shipped from?")
+    docs = vectorstore.search("Where are replacement parts shipped from?", k=2)
     assert len(docs) == 2
+
+
+def chunks(*texts):
+    return [Document(page_content=text) for text in texts]
+
+
+def test_fuse_prefers_chunks_ranked_well_in_both_lists():
+    by_vector = chunks("a", "b", "c")
+    by_keyword = chunks("b", "c", "a")
+    assert [doc.page_content for doc in vectorstore.fuse([by_vector, by_keyword], k=3)] == ["b", "a", "c"]
+
+
+def test_fuse_keeps_chunks_found_by_only_one_list():
+    fused = vectorstore.fuse([chunks("a", "b"), chunks("c")], k=3)
+    assert sorted(doc.page_content for doc in fused) == ["a", "b", "c"]
+
+
+def test_fuse_returns_at_most_k():
+    assert len(vectorstore.fuse([chunks("a", "b", "c"), chunks("c", "b", "a")], k=2)) == 2
+
+
+def test_tokenize():
+    assert vectorstore.tokenize("Check zone.cfg, then 20%!") == ["check", "zone", "cfg", "then", "20"]

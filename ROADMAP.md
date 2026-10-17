@@ -11,20 +11,10 @@
 7. Tests (using a fake model and fake embeddings) and GitHub Actions
 8. Logging with `-v`, every attempt kept in the state, a JSON lines log of all
    runs, and timing for each step
-
-## 9. Better retrieval
-
-So far every answerable test question is found on the first try, so the retry
-loop has only been tested on questions it can't answer.
-
-| | Task | Done when |
-|---|---|---|
-| 9.1 | Harder questions worded differently from the documents ("how long until a battery pack wears out?") | some questions need a rewrite to be answered |
-| 9.2 | A step that drops irrelevant chunks before generating | eval score compared with and without it |
-| 9.3 | Hybrid search (keyword + vector) | eval score compared with vector only |
-| 9.4 | On a retry, keep the earlier chunks or replace them? | decided by eval results |
-| 9.5 | Tune chunk size, overlap and k | chosen values written down with their scores |
-| 9.6 | Numbered citations in answers | the answer points to the chunks it used |
+9. Retrieval: 29 test questions, three documents about other products, a
+   search-only benchmark, chunk titles, hybrid search, a chunk filter and
+   keeping chunks across retries (both off by default), and citations. The
+   measurements are in [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## 10. Interface
 
@@ -43,6 +33,9 @@ loop has only been tested on questions it can't answer.
 | 11.3 | Compare models: a small one (around 4B), `qwen3.5:9b`, and a larger one if it fits in memory | score and time per model |
 | 11.4 | Thinking mode on vs. off | does the slower mode change the score? |
 | 11.5 | Repeat each setting a few times | results show the spread, not one run |
+| 11.6 | Shorter critic replies: the critic takes over half the run time, mostly writing its explanation | critic time drops without losing score |
+| 11.7 | Rewritten queries sometimes use search engine syntax (quotes, `OR`) that means nothing to vector search | rewrite prompt asks for plain words; retries compared |
+| 11.8 | Re-test hybrid search and the chunk filter with a smaller model | they may help a weaker model even though they didn't help `qwen3.5:9b` |
 
 ## 12. Packaging and write-up
 

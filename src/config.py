@@ -20,12 +20,25 @@ LLM_THINKING = os.getenv("LLM_THINKING", "0") == "1"
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
-RETRIEVER_K = int(os.getenv("RETRIEVER_K", "4"))
+def _int(name: str, default: int) -> int:
+    # An empty value (e.g. "CHUNK_SIZE=" in .env) means "use the default".
+    return int(os.getenv(name) or default)
+
+
+CHUNK_SIZE = _int("CHUNK_SIZE", 800)
+CHUNK_OVERLAP = _int("CHUNK_OVERLAP", 120)
+RETRIEVER_K = _int("RETRIEVER_K", 4)
+# "vector" (embedding similarity) or "hybrid" (embeddings plus keyword search)
+SEARCH = os.getenv("SEARCH") or "vector"
+if SEARCH not in ("vector", "hybrid"):
+    raise ValueError(f"SEARCH must be 'vector' or 'hybrid', not {SEARCH!r}")
+# Ask the model to drop irrelevant chunks before answering (one extra call per attempt).
+FILTER_CHUNKS = os.getenv("FILTER_CHUNKS", "0") == "1"
+# On a retry, keep the chunks found so far as well as the new ones.
+KEEP_CHUNKS = os.getenv("KEEP_CHUNKS", "0") == "1"
 
 # How often a rejected answer leads to a new query before we give up.
-MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))
+MAX_RETRIES = _int("MAX_RETRIES", 2)
 
 # Every question asked through main or evaluate is appended here as one JSON line.
 RUNS_FILE = Path(os.getenv("RUNS_FILE", ROOT_DIR / "runs" / "runs.jsonl"))

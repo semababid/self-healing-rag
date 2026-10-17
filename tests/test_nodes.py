@@ -1,7 +1,7 @@
 import pytest
 from langchain_core.documents import Document
 
-from src import nodes
+from src import config, nodes
 from src.nodes import FALLBACK_MESSAGE
 
 
@@ -34,6 +34,21 @@ def test_is_fallback(text, expected):
     assert nodes.is_fallback(text) == expected
 
 
+@pytest.mark.parametrize("text", [
+    f"{FALLBACK_MESSAGE} [1]",
+    f'"{FALLBACK_MESSAGE}" [1, 2]',
+])
+def test_is_fallback_ignores_citations(text):
+    assert nodes.is_fallback(text)
+
+
+def test_cited_documents():
+    docs = [Document(page_content=f"chunk {n}") for n in (1, 2, 3)]
+    answer = "38 minutes [3]. It carries 2.1 kg [1, 3][9]."
+    assert nodes.cited_documents(answer, docs) == [docs[2], docs[0]]
+    assert nodes.cited_documents("no citations", docs) == []
+
+
 def test_format_docs_numbers_the_chunks():
     docs = [Document(page_content="first"), Document(page_content="second")]
     assert nodes.format_docs(docs) == "[1] first\n\n[2] second"
@@ -53,6 +68,36 @@ def test_retrieve_searches_for_the_current_query(retriever):
 def test_retrieve_uses_the_question_when_there_is_no_query(retriever):
     nodes.retrieve({"question": "original question"})
     assert retriever.queries == ["original question"]
+
+
+def test_retrieve_replaces_chunks_on_a_retry_by_default(retriever):
+    old = Document(page_content="old chunk")
+    out = nodes.retrieve({"question": "q", "query": "q2", "retries": 1, "documents": [old]})
+    assert out["documents"] == retriever.documents
+
+
+def test_retrieve_can_keep_earlier_chunks(retriever, monkeypatch):
+    monkeypatch.setattr(config, "KEEP_CHUNKS", True)
+    old = Document(page_content="old chunk")
+    again = Document(page_content=retriever.documents[0].page_content)  # found twice
+    out = nodes.retrieve({"question": "q", "query": "q2", "retries": 1, "documents": [again, old]})
+    assert out["documents"] == retriever.documents + [old]
+
+
+def test_filter_keeps_only_the_chosen_chunks(llm):
+    docs = [Document(page_content="about the N5"), Document(page_content="about the N7")]
+    llm.replies = [{"chunks": [2]}]
+    assert nodes.filter_chunks({"question": "q", "documents": docs}) == {"documents": [docs[1]]}
+
+
+def test_filter_keeps_everything_if_its_reply_cant_be_read(llm, retriever):
+    llm.replies = ["not json"]
+    assert nodes.filter_chunks({"question": "q", "documents": retriever.documents}) == {}
+
+
+def test_generate_without_chunks_returns_the_fallback_without_the_model(llm):
+    assert nodes.generate({"question": "q", "documents": []}) == {"generation": FALLBACK_MESSAGE}
+    assert llm.prompts == []
 
 
 def test_generate_sends_question_and_context(llm, retriever):

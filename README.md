@@ -41,10 +41,14 @@ python -m src.ingest     # builds the vector store
 
 ```bash
 python -m src.main "What is the maximum flight time of the Nimbus N7?"
-python -m src.main               # ask questions until you type quit
-python -m src.evaluate           # score it on the test questions
-python -m src.graph              # print the graph
+python -m src.main                       # ask questions until you type quit
+python -m src.evaluate                   # score it on the test questions
+python -m src.evaluate --retrieval       # only check the search (no model, a few seconds)
+python -m src.graph                      # print the graph
 ```
+
+Answers cite the chunks they used, like "The N7 carries a 2.1 kg payload [4]",
+and `main` lists the file each cited chunk came from.
 
 Add `-v` to `main` or `evaluate` to see each step as it happens (`[retrieve]`,
 `[generate]`, `[critic]`, `[rewrite #1]`, ...) and how long each one took.
@@ -65,40 +69,52 @@ models are faster but make a weaker critic.
 
 ## Documents
 
-`data/sample_docs` holds six short documents about Nimbus Robotics, a company
+`data/sample_docs` holds nine short documents about Nimbus Robotics, a company
 that doesn't exist: a handbook, a support guide, release notes, safety rules,
-benefits and an IT policy. Because the company is made up, the model can't know
-the answers from its training data, so any answer that isn't in the documents
-is a hallucination. Put your own `.md`, `.txt` or `.pdf` files in the folder and
-run `python -m src.ingest` again to use them instead.
+benefits, an IT policy, and documents about two other drone models (the older
+N5 and the upcoming N9) and the charging docks. Because the company is made up,
+the model can't know the answers from its training data, so any answer that
+isn't in the documents is a hallucination. The N5 and N9 documents are there
+on purpose: they give prices, colours and battery types for products other
+than the N7, which tests whether the system mixes products up.
+
+Put your own `.md`, `.txt` or `.pdf` files in the folder and run
+`python -m src.ingest` again to use them instead. Each chunk is stored with
+its document's title in front (the first `#` heading, or the file name), so a
+chunk from the middle of a document still says what it's about.
 
 ## Evaluation
 
-`src/evaluate.py` runs 11 fixed questions. Six are answered in the documents,
-and the answer must contain the expected fact (for example "38" for the
-N7's flight time). Five sound plausible but aren't covered (the N7's colours,
-its maximum altitude, the CFO's name, ...), and those must end in the "I don't
-have enough information" reply.
+`src/evaluate.py` runs 29 fixed questions:
 
-With `qwen3.5:9b` (thinking off) on an Apple M5 with 16 GB, all 11 pass, in
-about 80 seconds in total:
+- 6 worded close to the documents, like "What is the maximum flight time of
+  the Nimbus N7?". The answer must contain the expected fact ("38").
+- 18 worded differently from the documents, like "How long until a battery
+  pack wears out?" for "rated for 500 charge cycles".
+- 5 that sound plausible but aren't answered, like the N7's colours or its
+  battery type. These must end in the "I don't have enough information"
+  reply. For four of them the documents do give the answer for the N5 or N9,
+  which makes it easy to answer with the wrong product's facts.
+
+With `qwen3.5:9b` (thinking off) on an Apple M5 with 16 GB, all 29 pass, in
+about four minutes in total:
 
 ```
-11/11 passed
-  answerable, answered correctly:  6/6
+29/29 passed
+  answerable, answered correctly:  24/24
   unanswerable, refused:           5/5
-  answered only after a retry:     0
+  answered only after a retry:     2
 ```
 
-Almost all of the time is spent in the model. In one run, generating answers
-took 49% of the time, the critic 38% (although it only runs for the six
-answerable questions; fallback answers skip it), query rewrites 10% and
-retrieval 2%.
+The last line is the retry loop at work. For "How much does Nimbus Care+
+cost?" and "When does the drone fly home by itself?", the first search didn't
+bring up the right chunk, so the first reply was "I don't have enough
+information". The rewritten queries ("Nimbus Care+ pricing plans and
+subscription costs") found it, and the second answers were correct. Most of the time goes to the model: about half to the critic, 40%
+to writing answers, 5% to rewriting queries and 2% to searching.
 
-So far no answerable question has needed a retry, because retrieval finds the
-right chunk on the first try. The retry loop has only been exercised on the
-unanswerable questions, where it tries two rewritten queries before giving up.
-Harder questions are planned (see the roadmap, 9.1).
+[EXPERIMENTS.md](EXPERIMENTS.md) has the measurements behind the default
+settings, including a case where better search results gave worse answers.
 
 ## Tests
 
@@ -122,15 +138,16 @@ Ollama when you change prompts or models.
 ```
 src/config.py       settings
 src/ingest.py       load documents, split into chunks, store in Chroma
-src/vectorstore.py  Chroma and embedding model access
+src/vectorstore.py  Chroma, embeddings, vector and hybrid search
 src/llm.py          the Ollama chat model
 src/logs.py         logging setup and the runs/runs.jsonl log
 src/state.py        the data passed between steps
-src/nodes.py        the steps: retrieve, generate, critic, rewrite, give up
+src/nodes.py        the steps: retrieve, (filter), generate, critic, rewrite, give up
 src/graph.py        connects the steps into the graph
 src/main.py         command-line interface
 src/evaluate.py     the test questions and scoring
 tests/              unit and graph tests (pytest, no model needed)
 ```
 
-[ROADMAP.md](ROADMAP.md) lists what's done and what's planned.
+[ROADMAP.md](ROADMAP.md) lists what's done and what's planned, and
+[EXPERIMENTS.md](EXPERIMENTS.md) has the results of tuning the search.
