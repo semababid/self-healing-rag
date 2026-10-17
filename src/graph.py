@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from src import nodes
+from src import config, nodes
 from src.state import GraphState
 
 
@@ -52,10 +52,25 @@ def build_graph():
 app = build_graph()
 
 
+def _recursion_limit() -> int:
+    """Upper bound on node executions for one run, derived from MAX_RETRIES.
+
+    A full run is the first pass (retrieve, generate, critic), 4 steps per
+    retry (transform_query, retrieve, generate, critic), and a final give_up.
+    Setting the limit explicitly does two jobs:
+
+    * LangGraph 0.x (still allowed by requirements.txt) aborts after 25 steps,
+      so MAX_RETRIES >= 6 would crash instead of giving up gracefully.
+    * LangGraph 1.x defaults to ~10,000 steps, so a routing bug could loop and
+      burn API calls; a tight bound acts as a circuit breaker.
+    """
+    return 3 + 4 * config.MAX_RETRIES + 1 + 5  # +5 safety margin
+
+
 def answer_question(question: str) -> GraphState:
     """Run the full pipeline for one question and return the final state."""
     initial: GraphState = {"question": question, "query": question, "retries": 0}
-    return app.invoke(initial)
+    return app.invoke(initial, {"recursion_limit": _recursion_limit()})
 
 
 def print_graph() -> None:

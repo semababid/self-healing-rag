@@ -7,10 +7,10 @@ claim into something measurable.
 We run a fixed set of questions through the real graph and score each one
 against its expected outcome:
 
-* **answerable**   — the docs contain the answer → the pipeline should produce a
-  grounded answer (critic accepts, no fallback).
-* **unanswerable** — the docs do NOT contain the answer, though the question
-  sounds plausible → the pipeline should refuse honestly rather than invent one.
+* **answerable**: the docs contain the answer, so the pipeline should produce a
+  grounded answer (critic accepts, no fallback) that states the expected fact.
+* **unanswerable**: the question sounds plausible but the docs don't answer it,
+  so the pipeline should refuse honestly rather than invent an answer.
 
 Run it after building the store (``python -m src.ingest``):
 
@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from src import config
 from src.graph import answer_question
 from src.nodes import FALLBACK_MESSAGE
-from src.vectorstore import get_vectorstore
+from src.vectorstore import require_store_built
 
 
 @dataclass(frozen=True)
@@ -43,25 +43,29 @@ class Case:
 
     question: str
     answerable: bool
-    note: str  # what a correct response hinges on — for the human reading output
+    # For answerable cases: substrings the answer must contain (case-insensitive),
+    # so a grounded-but-wrong answer still fails. Keep them short and unambiguous.
+    expect: tuple[str, ...] = ()
 
 
 # The fictional Nimbus docs make this safe: an "unanswerable" question has no
 # real answer anywhere, so a confident response can only be a hallucination.
+# Avoid questions the docs answer *by omission*. For "is there a Berlin
+# office?", the docs list every office, so "No" is a grounded answer.
 CASES: list[Case] = [
     # --- Answerable: the facts are in the documents ------------------------
-    Case("What is the maximum flight time of the Nimbus N7?", True, "38 minutes"),
-    Case("Who is the CEO of Nimbus Robotics?", True, "Dr. Lena Farkas"),
-    Case("How long is the warranty on the Nimbus N7?", True, "24 months"),
-    Case("How much does Nimbus Care+ cost?", True, "349 EUR"),
-    Case("How many paid vacation days do full-time employees get?", True, "30 days"),
-    Case("Where are replacement parts shipped from?", True, "Tallinn office"),
+    Case("What is the maximum flight time of the Nimbus N7?", True, ("38",)),
+    Case("Who is the CEO of Nimbus Robotics?", True, ("Farkas",)),
+    Case("How long is the warranty on the Nimbus N7?", True, ("24",)),
+    Case("How much does Nimbus Care+ cost?", True, ("349",)),
+    Case("How many paid vacation days do full-time employees get?", True, ("30",)),
+    Case("Where are replacement parts shipped from?", True, ("Tallinn",)),
     # --- Unanswerable: plausible, but absent from the documents ------------
-    Case("What colours is the Nimbus N7 available in?", False, "never stated"),
-    Case("How much does the Nimbus N7 drone itself cost to buy?", False, "no price given"),
-    Case("Who is the CFO of Nimbus Robotics?", False, "only CEO/CTO are named"),
-    Case("What is the maximum altitude the Nimbus N7 can reach?", False, "not in docs"),
-    Case("Does Nimbus Robotics have an office in Berlin?", False, "offices are Cottbus/Porto/Tallinn"),
+    Case("What colours is the Nimbus N7 available in?", False),
+    Case("How much does the Nimbus N7 drone itself cost to buy?", False),  # only Care+ is priced
+    Case("Who is the CFO of Nimbus Robotics?", False),  # only CEO/CTO are named
+    Case("What is the maximum altitude the Nimbus N7 can reach?", False),
+    Case("What battery chemistry does the Nimbus N7 use?", False),
 ]
 
 
@@ -79,21 +83,19 @@ class Result:
     def passed(self) -> bool:
         """A case passes when the pipeline's behaviour matches expectation.
 
-        Answerable → must produce a grounded, non-refusal answer.
+        Answerable → must produce a grounded, non-refusal answer containing
+        every expected fact.
         Unanswerable → must refuse (the honest fallback), not fabricate.
         """
         if self.case.answerable:
-            return self.grounded and not self.refused
+            return self.grounded and not self.refused and not self.missing
         return self.refused
 
-
-def _check_store_ready() -> None:
-    """Fail early with a clear hint if the vector store hasn't been built."""
-    if not get_vectorstore().get().get("ids"):
-        raise SystemExit(
-            "The vector store is empty. Build it first:\n"
-            "    python -m src.ingest"
-        )
+    @property
+    def missing(self) -> list[str]:
+        """Expected facts that don't appear in the answer."""
+        answer = self.answer.lower()
+        return [fact for fact in self.case.expect if fact.lower() not in answer]
 
 
 def run_case(case: Case, *, quiet: bool) -> Result:
@@ -117,7 +119,7 @@ def run_case(case: Case, *, quiet: bool) -> Result:
 def _print_report(results: list[Result]) -> None:
     """Print a per-case table followed by aggregate accuracy numbers."""
     print("\n" + "=" * 78)
-    print("SELF-HEALING RAG — EVALUATION REPORT")
+    print("SELF-HEALING RAG: EVALUATION REPORT")
     print("=" * 78)
     header = f"{'result':8} {'expected':13} {'retries':8} question"
     print(header)
@@ -151,6 +153,23 @@ def _print_report(results: list[Result]) -> None:
             f"  self-healed:       {len(healed)} case(s) only passed after a "
             f"query rewrite + retry"
         )
+
+    # For each failure, show what came back so it can be diagnosed.
+    failures = [r for r in results if not r.passed]
+    if failures:
+        print("-" * 78)
+        print("Failures:")
+        for r in failures:
+            if r.case.answerable and r.refused:
+                why = "refused an answerable question"
+            elif r.case.answerable and not r.grounded:
+                why = "critic did not accept the answer"
+            elif r.case.answerable:
+                why = f"answer is missing expected fact(s): {r.missing}"
+            else:
+                why = "answered instead of refusing (possible hallucination)"
+            print(f"  ✗ {r.case.question}\n    why:    {why}")
+            print(f"    answer: {r.answer[:200]}")
     print("=" * 78 + "\n")
 
 
@@ -163,10 +182,14 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv[1:])
 
-    config.require_anthropic_key()
-    _check_store_ready()
+    try:
+        config.require_anthropic_key()
+        require_store_built()
+    except RuntimeError as err:
+        print(f"Error: {err}", file=sys.stderr)
+        return 1
 
-    print(f"Evaluating {len(CASES)} question(s) — this calls the API per case ...")
+    print(f"Evaluating {len(CASES)} question(s). Each one calls the API ...")
     results = [run_case(case, quiet=args.quiet) for case in CASES]
     _print_report(results)
 

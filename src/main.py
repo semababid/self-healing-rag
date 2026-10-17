@@ -11,8 +11,19 @@ Make sure you've built the vector store first:
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
+from langchain_core.documents import Document
+
+from src import config
 from src.graph import answer_question
+from src.vectorstore import require_store_built
+
+
+def _sources(documents: list[Document]) -> str:
+    """List the distinct source files the retrieved chunks came from."""
+    names = sorted({Path(d.metadata.get("source", "?")).name for d in documents})
+    return ", ".join(names) or "none"
 
 
 def _print_result(question: str, state: dict) -> None:
@@ -27,6 +38,9 @@ def _print_result(question: str, state: dict) -> None:
         f"retries={state.get('retries', 0)}  "
         f"chunks_used={len(state.get('documents', []))}"
     )
+    # Only cite sources for an accepted answer. A refusal didn't use them.
+    if state.get("grounded"):
+        print(f"sources: {_sources(state.get('documents', []))}")
     print("=" * 70 + "\n")
 
 
@@ -37,6 +51,14 @@ def _run_once(question: str) -> None:
 
 
 def main(argv: list[str]) -> int:
+    # Fail fast on setup problems, before loading models or calling the API.
+    try:
+        config.require_anthropic_key()
+        require_store_built()
+    except RuntimeError as err:
+        print(f"Error: {err}", file=sys.stderr)
+        return 1
+
     if len(argv) > 1:
         _run_once(" ".join(argv[1:]))
         return 0

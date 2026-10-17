@@ -34,6 +34,19 @@ def get_vectorstore() -> Chroma:
     )
 
 
+def require_store_built() -> None:
+    """Fail fast with a friendly message if ``python -m src.ingest`` hasn't run.
+
+    Without this, an empty store silently retrieves nothing, the critic rejects
+    every attempt, and the user gets "I don't know" after burning API calls.
+    """
+    if not get_vectorstore().get(limit=1, include=[])["ids"]:
+        raise RuntimeError(
+            "The vector store is empty. Build it first:\n"
+            "    python -m src.ingest"
+        )
+
+
 def get_retriever(k: int | None = None):
     """Return a retriever that fetches the top-k most similar chunks."""
     k = k or config.RETRIEVER_K

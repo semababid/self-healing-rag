@@ -10,9 +10,11 @@ The embeddings are computed locally, so this works fully offline.
 
 from __future__ import annotations
 
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from pathlib import Path
+
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pypdf import PdfReader
 
 from src import config
 from src.vectorstore import get_vectorstore
@@ -20,6 +22,27 @@ from src.vectorstore import get_vectorstore
 # Which file extensions we know how to read.
 _TEXT_SUFFIXES = {".md", ".txt"}
 _PDF_SUFFIXES = {".pdf"}
+
+
+def _load_text(path: Path) -> list[Document]:
+    """Read a Markdown/text file as one Document."""
+    text = path.read_text(encoding="utf-8")
+    return [Document(page_content=text, metadata={"source": str(path)})]
+
+
+def _load_pdf(path: Path) -> list[Document]:
+    """Read a PDF as one Document per page, skipping pages with no text."""
+    docs = []
+    for page_number, page in enumerate(PdfReader(path).pages):
+        text = page.extract_text() or ""
+        if text.strip():
+            docs.append(
+                Document(
+                    page_content=text,
+                    metadata={"source": str(path), "page": page_number},
+                )
+            )
+    return docs
 
 
 def load_documents() -> list[Document]:
@@ -33,9 +56,9 @@ def load_documents() -> list[Document]:
             continue
         suffix = path.suffix.lower()
         if suffix in _TEXT_SUFFIXES:
-            docs.extend(TextLoader(str(path), encoding="utf-8").load())
+            docs.extend(_load_text(path))
         elif suffix in _PDF_SUFFIXES:
-            docs.extend(PyPDFLoader(str(path)).load())
+            docs.extend(_load_pdf(path))
         else:
             print(f"  · skipping unsupported file: {path.name}")
 
@@ -67,7 +90,7 @@ def ingest() -> None:
 
     # Rebuild from scratch so re-running ingest never duplicates chunks.
     store = get_vectorstore()
-    existing_ids = store.get().get("ids", [])
+    existing_ids = store.get(include=[]).get("ids", [])  # ids only, skip text
     if existing_ids:
         print(f"  clearing {len(existing_ids)} existing chunk(s)")
         store.delete(ids=existing_ids)

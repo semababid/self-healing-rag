@@ -116,7 +116,12 @@ _CRITIC_PROMPT = ChatPromptTemplate.from_messages(
 def critic(state: GraphState) -> GraphState:
     """Judge whether the candidate answer is grounded in the retrieved chunks."""
     print("  [critic] grading answer ...")
-    grader = _CRITIC_PROMPT | get_llm().with_structured_output(Grade)
+    # json_schema = native structured outputs: the API constrains the reply to
+    # the Grade schema. The default (forced tool calling) is rejected by newer
+    # models such as claude-opus-5-5 / claude-sonnet-5-5.
+    grader = _CRITIC_PROMPT | get_llm().with_structured_output(
+        Grade, method="json_schema"
+    )
     result: Grade = grader.invoke(
         {
             "question": state["question"],

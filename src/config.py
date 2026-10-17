@@ -24,8 +24,8 @@ CHROMA_COLLECTION = "self_healing_rag"
 
 # --- Models ----------------------------------------------------------------
 # Claude model used for BOTH answer generation and the critic/grader.
-# Default to the most capable Opus tier; override via CLAUDE_MODEL to save cost
-# (e.g. "claude-haiku-4-5" or "claude-sonnet-5").
+# Override via CLAUDE_MODEL, e.g. "claude-opus-5-5" (current Opus),
+# or "claude-sonnet-5-5" / "claude-haiku-5-5" to save cost.
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-4-8")
 
 # Local embedding model — runs on your machine via sentence-transformers,

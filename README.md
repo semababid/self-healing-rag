@@ -59,38 +59,57 @@ cp .env.example .env        # then edit .env and paste your key
 # 4. Build the vector store from the sample docs
 python -m src.ingest
 
-# 5. Ask a question
+# 5. Ask a question (the answer lists the source files it came from)
 python -m src.main "What is the maximum flight time of the Nimbus N7?"
 
 # 6. (Optional) Score the self-healing behaviour on a curated question set
 python -m src.evaluate            # full trace + report
 python -m src.evaluate --quiet    # just the summary table
+
+# 7. (Optional) Print the workflow diagram. No API key needed.
+python -m src.graph
 ```
+
+`main` and `evaluate` check for the API key and the vector store before doing
+anything else. If either is missing, they stop with a one-line explanation
+instead of spending API calls on a run that can only end in "I don't know".
+
+## Choosing a model
+
+The generator and the critic share one model, set by `CLAUDE_MODEL` in `.env`.
+The default is `claude-opus-4-8`. Current options are `claude-opus-5-5`, or
+`claude-sonnet-5-5` and `claude-haiku-5-5` to save cost. The critic uses native
+structured output (`method="json_schema"`), which every current model accepts.
+The older tool-forcing approach fails on the 5.5 models.
 
 ## Does the self-healing actually work?
 
-`src/evaluate.py` turns the project's central claim — *answers what the docs
-support, refuses to hallucinate on what they don't* — into a measurable check.
-The sample docs are fictional on purpose, so any confident answer to a question
-they don't cover can only be a hallucination.
+`src/evaluate.py` tests the project's main claim: the pipeline answers what the
+documents support and refuses when they don't. The sample documents describe a
+made-up company, so a confident answer to a question they don't cover can only
+be a hallucination.
 
-It runs a fixed set of questions through the real graph and scores each one:
+The script runs a fixed set of questions through the real graph and scores each
+one. Answerable questions, such as *"How long is the N7 warranty?"*, must get a
+grounded answer that the critic accepts and that contains the expected fact
+("24"). Unanswerable questions, such as *"What is the N7's maximum altitude?"*,
+must end in the honest fallback.
 
-- **answerable** questions (e.g. *"How long is the N7 warranty?"*) must produce a
-  grounded answer the critic accepts;
-- **unanswerable** questions (e.g. *"What is the N7's maximum altitude?"*) must
-  trigger the honest fallback instead of a made-up answer.
-
-The report breaks results into grounded-answers vs. honest-refusals and flags
-any case that only passed *after* a query rewrite + retry (the self-healing path
-in action). The script exits non-zero on any failure, so it also works as a
+The report counts grounded answers and honest refusals separately. It also
+flags any case that passed only after a query rewrite and retry, which is the
+self-healing path at work. For each failure it prints the answer and the reason
+it failed. The script exits non-zero if anything fails, so it doubles as a
 smoke test.
+
+The corpus is six documents split into 16 chunks, and the retriever fetches 4
+per query. Retrieval therefore has to choose, which is what gives a rewritten
+query something to improve.
 
 ## Project layout
 
 ```
 self-healing-rag/
-├── data/sample_docs/     # source documents (fictional, so hallucination is testable)
+├── data/sample_docs/     # 6 fictional company docs (so hallucination is testable)
 ├── src/
 │   ├── config.py         # all settings & env overrides
 │   ├── ingest.py         # load → chunk → embed → persist to Chroma   (Phase 2)
@@ -101,7 +120,9 @@ self-healing-rag/
 │   ├── graph.py          # wire the cyclical LangGraph                 (Phase 4)
 │   ├── main.py           # CLI entrypoint                              (Phase 5)
 │   └── evaluate.py       # scored eval of the self-healing behaviour   (Phase 6)
+├── ROADMAP.md            # planned phases 7 to 11, split into sub-phases
 └── requirements.txt
 ```
 
-Built step by step — see the git history for each phase.
+The project was built one phase at a time, and the git history has a commit for
+each phase. [ROADMAP.md](ROADMAP.md) lists what comes next.
