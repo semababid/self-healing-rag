@@ -4,19 +4,36 @@ retrieve -> generate -> critic, then the critic's verdict decides: accept the
 answer, rewrite the query and go back to retrieve, or give up.
 """
 
+import time
+
 from langgraph.graph import END, START, StateGraph
 
 from src import config, nodes
 from src.state import GraphState
 
+STEPS = {
+    "retrieve": nodes.retrieve,
+    "generate": nodes.generate,
+    "critic": nodes.critic,
+    "transform_query": nodes.transform_query,
+    "give_up": nodes.give_up,
+}
+
+
+def timed(name, step):
+    """Wrap a step so it also reports how long it took."""
+    def run(state):
+        start = time.perf_counter()
+        update = step(state)
+        seconds = round(time.perf_counter() - start, 3)
+        return {**update, "timings": [{"step": name, "seconds": seconds}]}
+    return run
+
 
 def build_graph():
     graph = StateGraph(GraphState)
-    graph.add_node("retrieve", nodes.retrieve)
-    graph.add_node("generate", nodes.generate)
-    graph.add_node("critic", nodes.critic)
-    graph.add_node("transform_query", nodes.transform_query)
-    graph.add_node("give_up", nodes.give_up)
+    for name, step in STEPS.items():
+        graph.add_node(name, timed(name, step))
 
     graph.add_edge(START, "retrieve")
     graph.add_edge("retrieve", "generate")

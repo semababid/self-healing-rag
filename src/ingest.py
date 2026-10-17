@@ -50,6 +50,7 @@ def ingest() -> None:
     )
     chunks = splitter.split_documents(docs)
     print(f"{len(docs)} documents, {len(chunks)} chunks")
+    print("Embedding them (the first run downloads the embedding model, about 90 MB) ...")
 
     # Start from an empty collection so running this twice doesn't duplicate chunks.
     store = get_vectorstore()

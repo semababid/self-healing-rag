@@ -6,15 +6,13 @@ the documents; they must end in the fallback reply instead of a made-up answer.
 The documents describe a fictional company, so the model can't know these
 answers from training.
 
-    python -m src.evaluate            # with the step-by-step trace
-    python -m src.evaluate --quiet    # results only
+    python -m src.evaluate        # results only
+    python -m src.evaluate -v     # also show each step
 
-Exits with status 1 if any case fails.
+Each case is saved to runs/runs.jsonl. Exits with status 1 if any case fails.
 """
 
 import argparse
-import contextlib
-import io
 import sys
 import time
 from dataclasses import dataclass
@@ -22,6 +20,7 @@ from dataclasses import dataclass
 from src import config
 from src.graph import answer_question
 from src.llm import LLM_ERRORS, check_ollama
+from src.logs import save_run, setup_logging, step_totals
 from src.nodes import is_fallback
 from src.vectorstore import require_store_built
 
@@ -69,11 +68,13 @@ def check(case: Case, state: dict) -> str | None:
     return f"answer doesn't contain {missing}" if missing else None
 
 
-def run(case: Case, quiet: bool) -> Result:
-    start = time.time()
-    with contextlib.redirect_stdout(io.StringIO() if quiet else sys.stdout):
-        state = answer_question(case.question)
-    return Result(case, state, time.time() - start, check(case, state))
+def run(case: Case) -> Result:
+    start = time.perf_counter()
+    state = answer_question(case.question)
+    result = Result(case, state, time.perf_counter() - start, check(case, state))
+    save_run(case.question, state, result.seconds, source="evaluate",
+             passed=result.failure is None, failure=result.failure)
+    return result
 
 
 def summarize(results: list[Result]) -> None:
@@ -89,7 +90,13 @@ def summarize(results: list[Result]) -> None:
     print(f"  unanswerable, refused:           "
           f"{sum(r.failure is None for r in unanswerable)}/{len(unanswerable)}")
     print(f"  answered only after a retry:     {len(healed)}")
-    print(f"  total time:                      {sum(r.seconds for r in results):.0f}s")
+    total = sum(r.seconds for r in results)
+    print(f"  total time:                      {total:.0f}s")
+
+    totals = step_totals([t for r in results for t in r.state.get("timings", [])])
+    print("\ntime per step, all questions together:")
+    for step, seconds in sorted(totals.items(), key=lambda item: -item[1]):
+        print(f"  {step:16} {seconds:6.1f}s  {100 * seconds / total:3.0f}%")
 
     for r in results:
         if r.failure:
@@ -99,8 +106,9 @@ def summarize(results: list[Result]) -> None:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Score the pipeline on a fixed question set.")
-    parser.add_argument("--quiet", action="store_true", help="hide the step-by-step trace")
+    parser.add_argument("-v", "--verbose", action="store_true", help="show each step")
     args = parser.parse_args(argv[1:])
+    setup_logging(args.verbose)
 
     try:
         check_ollama()
@@ -114,7 +122,7 @@ def main(argv: list[str]) -> int:
     results = []
     for case in CASES:
         try:
-            result = run(case, args.quiet)
+            result = run(case)
         except LLM_ERRORS as err:
             print(f"Error: the model call failed ({err})", file=sys.stderr)
             return 1

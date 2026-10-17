@@ -42,12 +42,22 @@ python -m src.ingest     # builds the vector store
 ```bash
 python -m src.main "What is the maximum flight time of the Nimbus N7?"
 python -m src.main               # ask questions until you type quit
-python -m src.evaluate --quiet   # score it on the test questions
+python -m src.evaluate           # score it on the test questions
 python -m src.graph              # print the graph
 ```
 
-Each run prints the steps it takes (`[retrieve]`, `[generate]`, `[critic]`,
-`[rewrite #1]`, ...), so you can watch the retry loop work.
+Add `-v` to `main` or `evaluate` to see each step as it happens (`[retrieve]`,
+`[generate]`, `[critic]`, `[rewrite #1]`, ...) and how long each one took.
+Without it you only get the answer.
+
+Every question is also saved to `runs/runs.jsonl`, one JSON object per line:
+the answer, the settings used, every attempt (query, files the chunks came
+from, answer, critic verdict and reason) and the time of each step. To look at
+the last one:
+
+```bash
+tail -n 1 runs/runs.jsonl | python -m json.tool
+```
 
 Settings are read from environment variables or a `.env` file; see
 `.env.example`. Any Ollama model can be used by setting `LLM_MODEL`. Smaller
@@ -80,6 +90,11 @@ about 80 seconds in total:
   answered only after a retry:     0
 ```
 
+Almost all of the time is spent in the model. In one run, generating answers
+took 49% of the time, the critic 38% (although it only runs for the six
+answerable questions; fallback answers skip it), query rewrites 10% and
+retrieval 2%.
+
 So far no answerable question has needed a retry, because retrieval finds the
 right chunk on the first try. The retry loop has only been exercised on the
 unanswerable questions, where it tries two rewritten queries before giving up.
@@ -109,6 +124,7 @@ src/config.py       settings
 src/ingest.py       load documents, split into chunks, store in Chroma
 src/vectorstore.py  Chroma and embedding model access
 src/llm.py          the Ollama chat model
+src/logs.py         logging setup and the runs/runs.jsonl log
 src/state.py        the data passed between steps
 src/nodes.py        the steps: retrieve, generate, critic, rewrite, give up
 src/graph.py        connects the steps into the graph

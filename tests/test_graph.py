@@ -35,6 +35,27 @@ def test_rejected_answer_is_fixed_by_a_retry(llm, retriever):
     assert llm.replies == []
 
 
+def test_state_keeps_every_attempt_and_step_time(llm, retriever):
+    llm.replies = [
+        "45 minutes.", REJECT,
+        "Nimbus N7 battery flight time",
+        "38 minutes.", ACCEPT,
+    ]
+
+    state = answer_question(QUESTION)
+
+    assert [(a["query"], a["answer"], a["grounded"]) for a in state["attempts"]] == [
+        (QUESTION, "45 minutes.", False),
+        ("Nimbus N7 battery flight time", "38 minutes.", True),
+    ]
+    assert state["attempts"][0]["critique"] == REJECT["reasoning"]
+    assert [t["step"] for t in state["timings"]] == [
+        "retrieve", "generate", "critic",
+        "transform_query", "retrieve", "generate", "critic",
+    ]
+    assert all(t["seconds"] >= 0 for t in state["timings"])
+
+
 def test_gives_up_when_nothing_is_found(llm, retriever):
     # The critic is skipped for fallback answers, so only generate and rewrite call the model.
     llm.replies = [FALLBACK_MESSAGE, "query 2", FALLBACK_MESSAGE, "query 3", FALLBACK_MESSAGE]

@@ -26,3 +26,6 @@ RETRIEVER_K = int(os.getenv("RETRIEVER_K", "4"))
 
 # How often a rejected answer leads to a new query before we give up.
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))
+
+# Every question asked through main or evaluate is appended here as one JSON line.
+RUNS_FILE = Path(os.getenv("RUNS_FILE", ROOT_DIR / "runs" / "runs.jsonl"))

@@ -83,3 +83,11 @@ def retriever(monkeypatch):
 def default_retries(monkeypatch):
     # Don't let a MAX_RETRIES set in .env change what the tests expect.
     monkeypatch.setattr(config, "MAX_RETRIES", 2)
+
+
+@pytest.fixture(autouse=True)
+def runs_file(tmp_path, monkeypatch):
+    # Tests never write to the real runs/ folder.
+    path = tmp_path / "runs.jsonl"
+    monkeypatch.setattr(config, "RUNS_FILE", path)
+    return path

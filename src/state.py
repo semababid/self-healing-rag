@@ -1,4 +1,5 @@
-from typing import TypedDict
+import operator
+from typing import Annotated, TypedDict
 
 from langchain_core.documents import Document
 
@@ -11,3 +12,7 @@ class GraphState(TypedDict, total=False):
     grounded: bool  # the critic's verdict on that answer
     critique: str  # the critic's reason, used when rewriting the query
     retries: int  # how many times the query has been rewritten
+
+    # Steps add to these lists instead of replacing them (operator.add).
+    attempts: Annotated[list[dict], operator.add]  # one entry per answer the critic checked
+    timings: Annotated[list[dict], operator.add]  # how long each step took, in order

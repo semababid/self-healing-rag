@@ -1,5 +1,8 @@
 """The steps of the graph. Each one takes the state and returns the fields it changes."""
 
+import logging
+from pathlib import Path
+
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -9,6 +12,8 @@ from src import config
 from src.llm import get_llm
 from src.state import GraphState
 from src.vectorstore import get_retriever
+
+log = logging.getLogger(__name__)
 
 FALLBACK_MESSAGE = (
     "I don't have enough information in the available documents to answer that reliably."
@@ -28,7 +33,7 @@ def format_docs(documents: list[Document]) -> str:
 
 def retrieve(state: GraphState) -> GraphState:
     query = state.get("query") or state["question"]
-    print(f"  [retrieve] {query!r}")
+    log.info("[retrieve] %r", query)
     return {"documents": get_retriever().invoke(query), "query": query}
 
 
@@ -42,13 +47,13 @@ GENERATE_PROMPT = ChatPromptTemplate.from_messages([
 
 
 def generate(state: GraphState) -> GraphState:
-    print("  [generate]")
     chain = GENERATE_PROMPT | get_llm() | StrOutputParser()
     answer = chain.invoke({
         "context": format_docs(state.get("documents", [])),
         "question": state["question"],
-    })
-    return {"generation": answer.strip()}
+    }).strip()
+    log.info("[generate] %r", answer)
+    return {"generation": answer}
 
 
 class Grade(BaseModel):
@@ -71,25 +76,32 @@ CRITIC_PROMPT = ChatPromptTemplate.from_messages([
 
 def critic(state: GraphState) -> GraphState:
     answer = state.get("generation", "")
+    documents = state.get("documents", [])
     if is_fallback(answer):
         # The generator already found nothing, so there is nothing to check.
-        print("  [critic] rejected: no answer in the context")
-        return {"grounded": False, "critique": "The retrieved context did not contain the answer."}
+        grounded, critique = False, "The retrieved context did not contain the answer."
+    else:
+        grader = CRITIC_PROMPT | get_llm().with_structured_output(Grade, include_raw=True)
+        grade = grader.invoke({
+            "question": state["question"],
+            "context": format_docs(documents),
+            "answer": answer,
+        })["parsed"]
+        if grade is None:
+            # Unreadable output counts as a rejection, never as a pass.
+            grounded, critique = False, "The critic's verdict could not be read."
+        else:
+            grounded, critique = grade.grounded, grade.reasoning
 
-    grader = CRITIC_PROMPT | get_llm().with_structured_output(Grade, include_raw=True)
-    out = grader.invoke({
-        "question": state["question"],
-        "context": format_docs(state.get("documents", [])),
+    log.info("[critic] %s: %s", "grounded" if grounded else "rejected", critique)
+    attempt = {
+        "query": state.get("query", state["question"]),
+        "sources": [Path(doc.metadata.get("source", "?")).name for doc in documents],
         "answer": answer,
-    })
-    grade = out["parsed"]
-    if grade is None:
-        # Unreadable output counts as a rejection, never as a pass.
-        print("  [critic] rejected: could not read the verdict")
-        return {"grounded": False, "critique": "The critic's verdict could not be read."}
-
-    print(f"  [critic] {'grounded' if grade.grounded else 'rejected'}: {grade.reasoning}")
-    return {"grounded": grade.grounded, "critique": grade.reasoning}
+        "grounded": grounded,
+        "critique": critique,
+    }
+    return {"grounded": grounded, "critique": critique, "attempts": [attempt]}
 
 
 REWRITE_PROMPT = ChatPromptTemplate.from_messages([
@@ -111,12 +123,12 @@ def transform_query(state: GraphState) -> GraphState:
         "query": previous,
         "critique": state.get("critique", ""),
     }).strip().strip("\"'")
-    print(f"  [rewrite #{retries}] {query!r}")
+    log.info("[rewrite #%d] %r", retries, query)
     return {"query": query or previous, "retries": retries}
 
 
 def give_up(state: GraphState) -> GraphState:
-    print("  [give up] out of retries")
+    log.info("[give up] out of retries")
     return {"generation": FALLBACK_MESSAGE, "grounded": False}
 
 

@@ -8,16 +8,9 @@
 4. The graph with the retry loop
 5. Command-line interface
 6. Evaluation script with 11 test questions; switched to a local Ollama model
-7. Tests (43, using a fake model and fake embeddings) and GitHub Actions
-
-## 8. Logging and traces
-
-| | Task | Done when |
-|---|---|---|
-| 8.1 | Use `logging` instead of `print`, with a `--verbose` flag | quiet by default |
-| 8.2 | Keep every attempt in the state: query, chunks found, verdict, reason | the final state shows the whole history |
-| 8.3 | Save each run to a JSON lines file | runs can be looked at afterwards |
-| 8.4 | Time each step | the eval shows where the time goes |
+7. Tests (using a fake model and fake embeddings) and GitHub Actions
+8. Logging with `-v`, every attempt kept in the state, a JSON lines log of all
+   runs, and timing for each step
 
 ## 9. Better retrieval
 

@@ -67,13 +67,32 @@ def test_generate_sends_question_and_context(llm, retriever):
 def test_critic_accepts_a_grounded_answer(llm, retriever):
     llm.replies = [{"grounded": True, "reasoning": "The context says 38 minutes."}]
     out = nodes.critic({"question": "q", "documents": retriever.documents, "generation": "38 minutes."})
-    assert out == {"grounded": True, "critique": "The context says 38 minutes."}
+    assert out["grounded"] is True
+    assert out["critique"] == "The context says 38 minutes."
 
 
 def test_critic_rejects_an_unsupported_answer(llm, retriever):
     llm.replies = [{"grounded": False, "reasoning": "45 minutes isn't in the context."}]
     out = nodes.critic({"question": "q", "documents": retriever.documents, "generation": "45 minutes."})
-    assert out == {"grounded": False, "critique": "45 minutes isn't in the context."}
+    assert out["grounded"] is False
+    assert out["critique"] == "45 minutes isn't in the context."
+
+
+def test_critic_records_the_attempt(llm, retriever):
+    llm.replies = [{"grounded": False, "reasoning": "45 minutes isn't in the context."}]
+    out = nodes.critic({
+        "question": "How long can the N7 fly?",
+        "query": "N7 flight time",
+        "documents": retriever.documents,
+        "generation": "45 minutes.",
+    })
+    assert out["attempts"] == [{
+        "query": "N7 flight time",
+        "sources": ["nimbus_handbook.md"],
+        "answer": "45 minutes.",
+        "grounded": False,
+        "critique": "45 minutes isn't in the context.",
+    }]
 
 
 def test_critic_rejects_when_its_output_cant_be_read(llm, retriever):
@@ -85,6 +104,7 @@ def test_critic_rejects_when_its_output_cant_be_read(llm, retriever):
 def test_critic_doesnt_call_the_model_for_the_fallback(llm):
     out = nodes.critic({"question": "q", "documents": [], "generation": FALLBACK_MESSAGE})
     assert out["grounded"] is False
+    assert out["attempts"][0]["answer"] == FALLBACK_MESSAGE
     assert llm.prompts == []
 
 

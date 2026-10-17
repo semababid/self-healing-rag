@@ -9,6 +9,9 @@ venv/
 # rebuilt by `python -m src.ingest`
 chroma_db/
 
+# local log of questions and answers
+runs/
+
 .pytest_cache/
 .ruff_cache/
 
