@@ -61,7 +61,30 @@ python -m src.ingest
 
 # 5. Ask a question
 python -m src.main "What is the maximum flight time of the Nimbus N7?"
+
+# 6. (Optional) Score the self-healing behaviour on a curated question set
+python -m src.evaluate            # full trace + report
+python -m src.evaluate --quiet    # just the summary table
 ```
+
+## Does the self-healing actually work?
+
+`src/evaluate.py` turns the project's central claim — *answers what the docs
+support, refuses to hallucinate on what they don't* — into a measurable check.
+The sample docs are fictional on purpose, so any confident answer to a question
+they don't cover can only be a hallucination.
+
+It runs a fixed set of questions through the real graph and scores each one:
+
+- **answerable** questions (e.g. *"How long is the N7 warranty?"*) must produce a
+  grounded answer the critic accepts;
+- **unanswerable** questions (e.g. *"What is the N7's maximum altitude?"*) must
+  trigger the honest fallback instead of a made-up answer.
+
+The report breaks results into grounded-answers vs. honest-refusals and flags
+any case that only passed *after* a query rewrite + retry (the self-healing path
+in action). The script exits non-zero on any failure, so it also works as a
+smoke test.
 
 ## Project layout
 
@@ -76,7 +99,8 @@ self-healing-rag/
 │   ├── state.py          # the graph's shared state                    (Phase 3)
 │   ├── nodes.py          # retrieve / generate / critic / rewrite      (Phase 3)
 │   ├── graph.py          # wire the cyclical LangGraph                 (Phase 4)
-│   └── main.py           # CLI entrypoint                              (Phase 5)
+│   ├── main.py           # CLI entrypoint                              (Phase 5)
+│   └── evaluate.py       # scored eval of the self-healing behaviour   (Phase 6)
 └── requirements.txt
 ```
 
