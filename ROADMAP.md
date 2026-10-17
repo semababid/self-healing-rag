@@ -8,20 +8,7 @@
 4. The graph with the retry loop
 5. Command-line interface
 6. Evaluation script with 11 test questions; switched to a local Ollama model
-
-## 7. Tests and CI
-
-Right now the only check is the evaluation, which needs Ollama running and takes
-over a minute. These tests should run in seconds without a model.
-
-| | Task | Done when |
-|---|---|---|
-| 7.1 | pytest setup, with a fake model that returns fixed answers | `pytest` runs |
-| 7.2 | Tests for `decide_after_critic`, `transform_query` and `give_up` | accept, retry and give up are all covered, including at the retry limit |
-| 7.3 | Full graph runs with the fake model | first-try answer, answer after a retry, and give up all work |
-| 7.4 | Ingestion tests on a temp folder (Markdown, PDF, running twice) | no duplicate chunks, `chroma_db/` untouched |
-| 7.5 | Tests for `check()` in the evaluation | every failure reason is tested |
-| 7.6 | GitHub Actions running the tests on each push | green check on GitHub |
+7. Tests (43, using a fake model and fake embeddings) and GitHub Actions
 
 ## 8. Logging and traces
 

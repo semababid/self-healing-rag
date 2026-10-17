@@ -85,6 +85,23 @@ right chunk on the first try. The retry loop has only been exercised on the
 unanswerable questions, where it tries two rewritten queries before giving up.
 Harder questions are planned (see the roadmap, 9.1).
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests replace the model with a fake one that returns scripted replies, so
+they don't need Ollama and finish in under a second. They cover each step of
+the graph, full runs through the retry loop (answered first time, fixed by a
+retry, gave up), loading and storing documents in a temporary folder, and the
+evaluation's scoring. GitHub Actions runs them on every push, on Python 3.10
+and 3.13.
+
+The evaluation above is different: it uses the real model, so run it with
+Ollama when you change prompts or models.
+
 ## Files
 
 ```
@@ -97,6 +114,7 @@ src/nodes.py        the steps: retrieve, generate, critic, rewrite, give up
 src/graph.py        connects the steps into the graph
 src/main.py         command-line interface
 src/evaluate.py     the test questions and scoring
+tests/              unit and graph tests (pytest, no model needed)
 ```
 
 [ROADMAP.md](ROADMAP.md) lists what's done and what's planned.
