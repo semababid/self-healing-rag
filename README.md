@@ -1,12 +1,41 @@
 # Self-healing RAG
 
-A question-answering system over a small set of documents that checks its own
-answers before returning them. After drafting an answer, a second model call
-(the critic) checks whether every fact in it comes from the retrieved text. If
-it doesn't, the system rewrites the search query and tries again. After two
-failed retries it says it doesn't know instead of guessing.
+[![tests](https://github.com/semababid/self-healing-rag/actions/workflows/tests.yml/badge.svg)](https://github.com/semababid/self-healing-rag/actions/workflows/tests.yml)
 
-The workflow is a LangGraph graph with a loop:
+A question-answering system that checks its own answers. It answers from a set
+of documents, then a second model call checks every fact against the text it
+found. If the check fails, it rewrites the search and tries again, and if
+nothing supports an answer, it says so instead of making one up.
+
+![The web page answering a question that needs a retry](docs/demo.gif)
+
+*The first search misses, so the first reply is "I don't have enough
+information". The query is rewritten, the second search finds the right
+passage, and the answer cites it.*
+
+## Results
+
+29 test questions, with a 9B model running locally:
+
+| | |
+|---|---|
+| Answerable questions answered correctly | 24 of 24 |
+| Unanswerable questions declined | 5 of 5 |
+| Answers found only after a retry | 2 |
+| Time for all 29 | about 4 minutes (`qwen3.5:9b` on an Apple M5) |
+
+Four of the unanswerable questions are traps. The documents give the price,
+colours, height and battery type of two other drone models, but not of the one
+the question asks about, so a careless answer would borrow the wrong product's
+facts.
+
+The most useful finding came from tuning the search. Smaller chunks ranked the
+right passage higher but gave worse answers: one chunk listed another model's
+price without saying which model it belonged to, and both the generator and the
+critic accepted it as the N7's. Starting every chunk with its document's title
+fixed it. [EXPERIMENTS.md](EXPERIMENTS.md) has all nine runs.
+
+## How it works
 
 ```
 question -> retrieve -> generate -> critic --grounded--> answer
@@ -16,9 +45,23 @@ question -> retrieve -> generate -> critic --grounded--> answer
                +-- rewrite query <-- retries left? --no--> "I don't know"
 ```
 
-Everything runs on your own machine: the language model through Ollama, the
-embeddings with sentence-transformers, and the vector store with Chroma. No API
-key or account is needed.
+The loop is a LangGraph graph. One local model (`qwen3.5:9b` through Ollama)
+writes the answer, checks it as the critic, and rewrites the search query.
+Search uses Chroma with sentence-transformers embeddings. There is a web page
+(Streamlit), an HTTP API (FastAPI) and a command line, 97 tests that run without
+the model, and GitHub Actions. Everything runs on your own machine; no API key
+or account is needed.
+
+## Quick start
+
+With Docker, Ollama included:
+
+```bash
+docker compose up
+```
+
+Then open http://localhost:8501. On a Mac, read [Run with Docker](#run-with-docker)
+first: Ollama inside Docker can't use the Mac's GPU.
 
 ## Setup
 
@@ -137,7 +180,7 @@ chunk from the middle of a document still says what it's about.
 
 ## Evaluation
 
-`src/evaluate.py` runs 29 fixed questions:
+`src/evaluate.py` runs the 29 questions behind the results above:
 
 - 6 worded close to the documents, like "What is the maximum flight time of
   the Nimbus N7?". The answer must contain the expected fact ("38").
@@ -145,28 +188,16 @@ chunk from the middle of a document still says what it's about.
   pack wears out?" for "rated for 500 charge cycles".
 - 5 that sound plausible but aren't answered, like the N7's colours or its
   battery type. These must end in the "I don't have enough information"
-  reply. For four of them the documents do give the answer for the N5 or N9,
-  which makes it easy to answer with the wrong product's facts.
+  reply.
 
-With `qwen3.5:9b` (thinking off) on an Apple M5 with 16 GB, all 29 pass, in
-about four minutes in total:
+The two answers found only after a retry were "How much does Nimbus Care+
+cost?" and "When does the drone fly home by itself?". In both, the first
+search didn't bring up the right chunk, so the first reply was "I don't have
+enough information". The rewritten queries ("Nimbus Care+ pricing plans and
+subscription costs") found it, and the second answers were correct.
 
-```
-29/29 passed
-  answerable, answered correctly:  24/24
-  unanswerable, refused:           5/5
-  answered only after a retry:     2
-```
-
-The last line is the retry loop at work. For "How much does Nimbus Care+
-cost?" and "When does the drone fly home by itself?", the first search didn't
-bring up the right chunk, so the first reply was "I don't have enough
-information". The rewritten queries ("Nimbus Care+ pricing plans and
-subscription costs") found it, and the second answers were correct. Most of the time goes to the model: about half to the critic, 40%
-to writing answers, 5% to rewriting queries and 2% to searching.
-
-[EXPERIMENTS.md](EXPERIMENTS.md) has the measurements behind the default
-settings, including a case where better search results gave worse answers.
+Most of the time goes to the model: about half to the critic, 40% to writing
+answers, 5% to rewriting queries and 2% to searching.
 
 ## Tests
 
@@ -182,28 +213,29 @@ retry, gave up), loading and storing documents in a temporary folder, the
 evaluation's scoring, the API, and the web page (run headless with Streamlit's
 test runner). GitHub Actions runs them on every push, on Python 3.11 and 3.13.
 
-The evaluation above is different: it uses the real model, so run it with
-Ollama when you change prompts or models.
+The evaluation is different: it uses the real model, so run it with Ollama
+when you change prompts or models.
 
 ## Files
 
 ```
-src/config.py       settings
-src/ingest.py       load documents, split into chunks, store in Chroma
-src/vectorstore.py  Chroma, embeddings, vector and hybrid search
-src/llm.py          the Ollama chat model
-src/logs.py         logging setup and the runs/runs.jsonl log
-src/state.py        the data passed between steps
-src/nodes.py        the steps: retrieve, (filter), generate, critic, rewrite, give up
-src/graph.py        connects the steps into the graph
-src/service.py      answers a question as plain data; used by the CLI, API and page
-src/main.py         command-line interface
-src/api.py          HTTP API (FastAPI)
-src/web.py          web page (Streamlit)
-src/evaluate.py     the test questions and scoring
-tests/              tests for all of the above (pytest, no model needed)
-Dockerfile          image for the web page, API and command line
-docker-compose.yml  runs Ollama, the web page and the API together
+src/config.py           settings
+src/ingest.py           load documents, split into chunks, store in Chroma
+src/vectorstore.py      Chroma, embeddings, vector and hybrid search
+src/llm.py              the Ollama chat model
+src/logs.py             logging setup and the runs/runs.jsonl log
+src/state.py            the data passed between steps
+src/nodes.py            the steps: retrieve, (filter), generate, critic, rewrite, give up
+src/graph.py            connects the steps into the graph
+src/service.py          answers a question as plain data; used by the CLI, API and page
+src/main.py             command-line interface
+src/api.py              HTTP API (FastAPI)
+src/web.py              web page (Streamlit)
+src/evaluate.py         the test questions and scoring
+tests/                  tests for all of the above (pytest, no model needed)
+scripts/record_demo.py  records docs/demo.gif from the running web page
+Dockerfile              image for the web page, API and command line
+docker-compose.yml      runs Ollama, the web page and the API together
 ```
 
 [ROADMAP.md](ROADMAP.md) lists what's done and what's planned, and

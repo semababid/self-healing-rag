@@ -57,7 +57,7 @@ def test_example_shows_answer_sources_and_every_attempt(ready, llm, retriever):
 
     assert "38 minutes [1]." in markdown(app)
     assert {m.label: m.value for m in app.metric if m.label != "Time"} == {
-        "Attempts": "2", "Retries": "1", "Sources": "1",
+        "Retries": "1", "Sources": "1",
     }
     assert [e.label for e in app.main.expander] == ["[1] nimbus_handbook.md"]
     assert "**Attempt 1**" in markdown(app) and "**Attempt 2**" in markdown(app)

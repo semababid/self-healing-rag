@@ -101,11 +101,12 @@ def answer_card(result: dict) -> None:
                      icon=":material/do_not_disturb_on:", color="orange")
         st.markdown(result["answer"])
 
-    with st.container(horizontal=True, gap="small"):
-        st.metric("Attempts", len(result["attempts"]), border=True)
-        st.metric("Retries", result["retries"], border=True)
-        st.metric("Sources", len(result["sources"]), border=True)
-        st.metric("Time", f"{result['seconds']:.1f} s", border=True)
+    # Equal columns keep the cards in one row (Streamlit stacks them on phones).
+    # No "attempts" card: it's always retries + 1, and the timeline numbers them.
+    retries, sources, seconds = st.columns(3, gap="small")
+    retries.metric("Retries", result["retries"], border=True)
+    sources.metric("Sources", len(result["sources"]), border=True)
+    seconds.metric("Time", f"{result['seconds']:.0f} s", border=True)
 
     if result["sources"]:
         st.markdown("**Sources**" if result["sources_cited"] else "**Chunks used**")
