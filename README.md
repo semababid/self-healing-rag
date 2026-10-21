@@ -240,3 +240,7 @@ docker-compose.yml      runs Ollama, the web page and the API together
 
 [ROADMAP.md](ROADMAP.md) lists what's done and what's planned, and
 [EXPERIMENTS.md](EXPERIMENTS.md) has the results of tuning the search.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

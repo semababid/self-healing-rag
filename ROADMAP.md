@@ -18,13 +18,12 @@
 10. Interface: a FastAPI endpoint (`POST /ask`), a Streamlit page that shows
     every attempt of the retry loop, and document upload from the page
 11. Docker (`docker compose up` runs Ollama, the web page and the API) and a
-    README that opens with a demo GIF and the results
+    README that opens with a demo GIF and the results; MIT licence, public repo
 
 ## 11. Packaging and presentation
 
 | | Task | Done when |
 |---|---|---|
-| 11.3 | Licence, then make the repo public | the repo is visible on GitHub |
 | 11.4 | Lock file with exact versions | a fresh install gets the same versions |
 
 ## 12. Experiments
