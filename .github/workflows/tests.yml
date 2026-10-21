@@ -19,9 +19,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: requirements*.txt
-      # The tests don't need a GPU. Installing the CPU build of PyTorch first
-      # avoids downloading the much larger CUDA build.
-      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - run: pip install -r requirements-dev.txt
+          cache-dependency-path: requirements*.lock
+      # Exact versions from the lock file, so CI tests what users install. The
+      # extra index has the CPU build of PyTorch that the lock pins on Linux.
+      - run: pip install -r requirements-dev.lock --extra-index-url https://download.pytorch.org/whl/cpu
       - run: pytest -v

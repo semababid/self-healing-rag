@@ -70,7 +70,7 @@ You need Python 3.11 or newer and [Ollama](https://ollama.com).
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu
 
 ollama pull qwen3.5:9b   # about 6.6 GB
 ollama serve             # skip if Ollama is already running
@@ -79,6 +79,21 @@ python -m src.ingest     # builds the vector store
 ```
 
 `ingest` downloads the embedding model (about 90 MB) the first time.
+
+`requirements.lock` pins the exact version of every package, the same versions
+that CI tests and the Docker image installs. The extra index has the CPU-only
+build of PyTorch that the lock uses on Linux and Windows; the default build
+includes about 2.4 GB of CUDA libraries the project doesn't need. On a Mac the
+extra index changes nothing.
+
+`requirements.txt` lists only the direct dependencies with minimum versions.
+After changing it, regenerate the lock files with
+[uv](https://docs.astral.sh/uv/) (the commands are at the top of each lock file):
+
+```bash
+uv pip compile requirements.txt --universal --python-version 3.11 --no-annotate --torch-backend cpu -o requirements.lock
+uv pip compile requirements-dev.txt --universal --python-version 3.11 --no-annotate --torch-backend cpu -c requirements.lock -o requirements-dev.lock
+```
 
 ## Run with Docker
 
@@ -202,7 +217,7 @@ answers, 5% to rewriting queries and 2% to searching.
 ## Tests
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.lock --extra-index-url https://download.pytorch.org/whl/cpu
 pytest
 ```
 

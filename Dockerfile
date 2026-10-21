@@ -9,11 +9,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# The CPU build of PyTorch. The default one includes CUDA and is several GB larger.
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Exact versions from the lock file. On Linux it pins the CPU build of PyTorch,
+# which comes from PyTorch's own index (the default build includes CUDA and is
+# several GB larger).
+COPY requirements.lock .
+RUN pip install -r requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Download the embedding model during the build, so the container starts
 # quickly and doesn't need to reach Hugging Face.
