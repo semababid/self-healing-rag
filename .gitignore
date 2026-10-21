@@ -12,6 +12,9 @@ chroma_db/
 # local log of questions and answers
 runs/
 
+# documents added through the web page
+data/uploads/
+
 .pytest_cache/
 .ruff_cache/
 

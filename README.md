@@ -39,6 +39,36 @@ python -m src.ingest     # builds the vector store
 
 ## Usage
 
+### Web page
+
+```bash
+streamlit run src/web.py
+```
+
+Opens at http://localhost:8501. Ask a question or click one of the three
+examples (answered directly, needs a retry, not in the documents). The page
+shows the answer with its sources and every attempt of the retry loop: what it
+searched for, which files the chunks came from, what it answered and what the
+critic said. Documents can be added from the sidebar; they go to
+`data/uploads/` and can be removed again with one click.
+
+### API
+
+```bash
+uvicorn src.api:app
+```
+
+```bash
+curl -X POST localhost:8000/ask -H "Content-Type: application/json" -d '{"question": "How heavy a load can the N7 carry?"}'
+```
+
+`POST /ask` returns the answer, whether it was grounded, the number of retries,
+the cited chunks with their text, every attempt and the time of each step.
+`GET /health` says whether Ollama and the vector store are ready. The
+interactive docs are at http://localhost:8000/docs.
+
+### Command line
+
 ```bash
 python -m src.main "What is the maximum flight time of the Nimbus N7?"
 python -m src.main                       # ask questions until you type quit
@@ -124,11 +154,11 @@ pytest
 ```
 
 The tests replace the model with a fake one that returns scripted replies, so
-they don't need Ollama and finish in under a second. They cover each step of
+they don't need Ollama and finish in about a second. They cover each step of
 the graph, full runs through the retry loop (answered first time, fixed by a
-retry, gave up), loading and storing documents in a temporary folder, and the
-evaluation's scoring. GitHub Actions runs them on every push, on Python 3.10
-and 3.13.
+retry, gave up), loading and storing documents in a temporary folder, the
+evaluation's scoring, the API, and the web page (run headless with Streamlit's
+test runner). GitHub Actions runs them on every push, on Python 3.10 and 3.13.
 
 The evaluation above is different: it uses the real model, so run it with
 Ollama when you change prompts or models.
@@ -144,9 +174,12 @@ src/logs.py         logging setup and the runs/runs.jsonl log
 src/state.py        the data passed between steps
 src/nodes.py        the steps: retrieve, (filter), generate, critic, rewrite, give up
 src/graph.py        connects the steps into the graph
+src/service.py      answers a question as plain data; used by the CLI, API and page
 src/main.py         command-line interface
+src/api.py          HTTP API (FastAPI)
+src/web.py          web page (Streamlit)
 src/evaluate.py     the test questions and scoring
-tests/              unit and graph tests (pytest, no model needed)
+tests/              tests for all of the above (pytest, no model needed)
 ```
 
 [ROADMAP.md](ROADMAP.md) lists what's done and what's planned, and

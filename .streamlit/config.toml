@@ -1,0 +1,29 @@
+[server]
+# Streamlit's file watcher looks into every imported package, and looking into
+# `transformers` makes it log dozens of harmless "No module named torchvision"
+# errors. The page doesn't need live reloading, so the watcher is off. While
+# editing src/web.py, run it with --server.fileWatcherType auto instead.
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
+
+# Indigo accent, soft grey panels, rounded corners. The page follows the
+# system's light or dark mode; both have their own palette below.
+[theme]
+primaryColor = "#6366F1"
+baseRadius = "0.6rem"
+showWidgetBorder = true
+
+[theme.light]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6FB"
+textColor = "#1E2330"
+borderColor = "#E2E6EF"
+
+[theme.dark]
+primaryColor = "#818CF8"
+backgroundColor = "#0D1117"
+secondaryBackgroundColor = "#161B26"
+textColor = "#E6E8EE"
+borderColor = "#2A3142"

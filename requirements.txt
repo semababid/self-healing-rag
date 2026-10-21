@@ -21,5 +21,10 @@ pypdf>=5.0.0
 
 python-dotenv>=1.0.0
 
+# API (src/api.py) and web page (src/web.py)
+fastapi>=0.143.0
+uvicorn>=0.54.0
+streamlit>=1.66.0
+
 # Needed by `python -m src.graph` to draw the graph
 grandalf>=0.8

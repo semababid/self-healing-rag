@@ -9,42 +9,31 @@ Every question is saved to runs/runs.jsonl.
 
 import argparse
 import sys
-import time
-from pathlib import Path
 
-from src.graph import answer_question
-from src.llm import LLM_ERRORS, check_ollama
-from src.logs import save_run, setup_logging, step_totals
-from src.nodes import cited_documents
-from src.vectorstore import require_store_built
+from src.llm import LLM_ERRORS
+from src.logs import setup_logging, step_totals
+from src.service import answer, problem
 
 
 def ask(question: str, verbose: bool) -> bool:
-    start = time.perf_counter()
     try:
-        state = answer_question(question)
+        result = answer(question, source="cli")
     except LLM_ERRORS as err:
         print(f"Error: the model call failed ({err})", file=sys.stderr)
         return False
-    seconds = time.perf_counter() - start
-    save_run(question, state, seconds)
 
     if verbose:
         print()
-    print(state["generation"])
-    print(f"\n(grounded={state.get('grounded')}, retries={state.get('retries', 0)}, "
-          f"{seconds:.1f}s)")
-    if state.get("grounded"):
-        documents = state["documents"]
-        cited = cited_documents(state["generation"], documents)
-        if cited:
-            for doc in cited:
-                print(f"[{documents.index(doc) + 1}] {Path(doc.metadata['source']).name}")
-        else:
-            sources = sorted({Path(doc.metadata["source"]).name for doc in documents})
-            print("retrieved from:", ", ".join(sources))
+    print(result["answer"])
+    print(f"\n(grounded={result['grounded']}, retries={result['retries']}, "
+          f"{result['seconds']:.1f}s)")
+    if result["sources_cited"]:
+        for source in result["sources"]:
+            print(f"[{source['number']}] {source['file']}")
+    elif result["sources"]:
+        print("retrieved from:", ", ".join(sorted({s["file"] for s in result["sources"]})))
     if verbose:
-        totals = step_totals(state.get("timings", []))
+        totals = step_totals(result["timings"])
         print("time per step:", ", ".join(f"{step} {secs:.1f}s" for step, secs in totals.items()))
     return True
 
@@ -56,11 +45,9 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv[1:])
     setup_logging(args.verbose)
 
-    try:
-        check_ollama()
-        require_store_built()
-    except RuntimeError as err:
-        print(f"Error: {err}", file=sys.stderr)
+    issue = problem()
+    if issue:
+        print(f"Error: {issue}", file=sys.stderr)
         return 1
 
     if args.question:

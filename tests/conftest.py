@@ -93,6 +93,14 @@ def docs_dir(tmp_path, monkeypatch):
     return folder
 
 
+@pytest.fixture(autouse=True)
+def upload_dir(tmp_path, monkeypatch):
+    # Tests never read or write the real data/uploads folder.
+    path = tmp_path / "uploads"
+    monkeypatch.setattr(config, "UPLOAD_DIR", path)
+    return path
+
+
 @pytest.fixture
 def temp_store(tmp_path, monkeypatch, docs_dir):
     # A store in a temp folder with fake embeddings: no model download, real chroma_db untouched.

@@ -104,7 +104,7 @@ citations on, chunk filter and keeping chunks off. That is run H: 29/29 in
 
 Hybrid search, the chunk filter and keeping chunks are still available
 (`SEARCH=hybrid`, `FILTER_CHUNKS=1`, `KEEP_CHUNKS=1`), since a smaller model
-might benefit from them. The roadmap has that as 11.8.
+might benefit from them. The roadmap has that as 12.8.
 
 ## Findings
 

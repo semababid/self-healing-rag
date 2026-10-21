@@ -9,6 +9,7 @@ load_dotenv()
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data" / "sample_docs"
+UPLOAD_DIR = ROOT_DIR / "data" / "uploads"  # documents added through the web page
 CHROMA_DIR = ROOT_DIR / "chroma_db"
 CHROMA_COLLECTION = "self_healing_rag"
 

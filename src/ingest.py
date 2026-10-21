@@ -41,11 +41,19 @@ def load_file(path: Path) -> list[Document]:
     return []
 
 
+def document_files() -> list[Path]:
+    """The sample documents, then any uploaded ones. Hidden files like .DS_Store are skipped."""
+    files = []
+    for folder in (config.DATA_DIR, config.UPLOAD_DIR):
+        if folder.exists():
+            files += sorted(p for p in folder.rglob("*") if p.is_file() and not p.name.startswith("."))
+    return files
+
+
 def load_documents() -> list[Document]:
     docs = []
-    for path in sorted(config.DATA_DIR.rglob("*")):
-        if path.is_file() and not path.name.startswith("."):  # skips .DS_Store
-            docs.extend(load_file(path))
+    for path in document_files():
+        docs.extend(load_file(path))
     if not docs:
         raise RuntimeError(f"No .md, .txt or .pdf files found in {config.DATA_DIR}")
     return docs
