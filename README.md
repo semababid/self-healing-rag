@@ -22,7 +22,7 @@ key or account is needed.
 
 ## Setup
 
-You need Python 3.10 or newer and [Ollama](https://ollama.com).
+You need Python 3.11 or newer and [Ollama](https://ollama.com).
 
 ```bash
 python3 -m venv .venv
@@ -36,6 +36,28 @@ python -m src.ingest     # builds the vector store
 ```
 
 `ingest` downloads the embedding model (about 90 MB) the first time.
+
+## Run with Docker
+
+Everything in containers, Ollama included:
+
+```bash
+docker compose up
+```
+
+The first start downloads the model (about 6.6 GB) into a Docker volume. Then
+the web page is at http://localhost:8501 and the API at
+http://localhost:8000/docs. The app image has the embedding model and the
+search index built in, so it needs no other downloads.
+
+On a Mac this mode is slow: Ollama inside Docker can't use the Mac's GPU, and
+the 9B model needs about 6.6 GB of Docker's memory. On an Apple M5, questions
+took 1.5 to 4 minutes this way, against about 10 seconds with Ollama running
+natively. So on a Mac, run Ollama itself on the Mac and only the app in Docker:
+
+```bash
+OLLAMA_BASE_URL=http://host.docker.internal:11434 docker compose up --no-deps web api
+```
 
 ## Usage
 
@@ -158,7 +180,7 @@ they don't need Ollama and finish in about a second. They cover each step of
 the graph, full runs through the retry loop (answered first time, fixed by a
 retry, gave up), loading and storing documents in a temporary folder, the
 evaluation's scoring, the API, and the web page (run headless with Streamlit's
-test runner). GitHub Actions runs them on every push, on Python 3.10 and 3.13.
+test runner). GitHub Actions runs them on every push, on Python 3.11 and 3.13.
 
 The evaluation above is different: it uses the real model, so run it with
 Ollama when you change prompts or models.
@@ -180,6 +202,8 @@ src/api.py          HTTP API (FastAPI)
 src/web.py          web page (Streamlit)
 src/evaluate.py     the test questions and scoring
 tests/              tests for all of the above (pytest, no model needed)
+Dockerfile          image for the web page, API and command line
+docker-compose.yml  runs Ollama, the web page and the API together
 ```
 
 [ROADMAP.md](ROADMAP.md) lists what's done and what's planned, and

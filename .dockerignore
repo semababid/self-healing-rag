@@ -1,0 +1,17 @@
+.venv/
+venv/
+.git/
+.github/
+.claude/
+**/__pycache__/
+.pytest_cache/
+
+# built inside the image, or local only
+chroma_db/
+runs/
+data/uploads/
+.env
+
+tests/
+*.md
+!data/**/*.md

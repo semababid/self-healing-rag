@@ -1,4 +1,5 @@
-# Python 3.10+. Minimum versions are the ones the project was tested with.
+# Python 3.11+ (Streamlit 1.66 needs it). Minimum versions are the ones the
+# project was tested with.
 
 langgraph>=1.0.0
 langchain-core>=1.6.10

@@ -17,14 +17,13 @@
    measurements are in [EXPERIMENTS.md](EXPERIMENTS.md).
 10. Interface: a FastAPI endpoint (`POST /ask`), a Streamlit page that shows
     every attempt of the retry loop, and document upload from the page
+11. Docker (part of phase 11): `docker compose up` runs Ollama, the web page
+    and the API; on a Mac, the app can use the host's Ollama instead
 
 ## 11. Packaging and presentation
 
-
-
 | | Task | Done when |
 |---|---|---|
-| 11.1 | Dockerfile and `docker compose` with Ollama | `docker compose up` starts everything |
 | 11.2 | README for visitors: what it shows at the top, a short demo GIF, the results table | the main idea is clear without scrolling |
 | 11.3 | Licence, then make the repo public | the repo is visible on GitHub |
 | 11.4 | Lock file with exact versions | a fresh install gets the same versions |

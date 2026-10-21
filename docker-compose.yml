@@ -1,0 +1,63 @@
+# Everything in Docker, Ollama included:
+#
+#     docker compose up
+#
+# The first start downloads the model (about 6.6 GB) into the "ollama" volume.
+# Then open http://localhost:8501 (web page) or http://localhost:8000/docs (API).
+#
+# On a Mac, Ollama inside Docker can't use the GPU and is very slow. Run Ollama
+# on the Mac itself instead and start only the app:
+#
+#     OLLAMA_BASE_URL=http://host.docker.internal:11434 docker compose up --no-deps web api
+
+x-app: &app
+  build: .
+  image: self-healing-rag
+  environment:
+    OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+    LLM_MODEL: ${LLM_MODEL:-qwen3.5:9b}
+  depends_on:
+    pull-model:
+      condition: service_completed_successfully
+      required: false  # not needed when Ollama runs on the host (--no-deps)
+
+services:
+  ollama:
+    image: ollama/ollama:0.32.6
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Runs once: downloads the model, then exits.
+  pull-model:
+    image: ollama/ollama:0.32.6
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${LLM_MODEL:-qwen3.5:9b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    ports:
+      - "8501:8501"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  api:
+    <<: *app
+    command: ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+
+volumes:
+  ollama:
